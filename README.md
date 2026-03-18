@@ -16,6 +16,11 @@ The entire application ships as a **single `.html` file**. You can host it on a 
 
 ---
 
+### Live Demo  
+https://pablo0713-glitch.github.io/TERRASCII/
+
+---
+
 ## Features
 
 ### Canvas & Editing
