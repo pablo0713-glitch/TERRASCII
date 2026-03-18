@@ -1,0 +1,3688 @@
+<!DOCTYPE html>
+<!--
+  TERRASCII
+  ─────────────────────────────────────────────────────────────────
+  A self-contained single-file ASCII tilemap editor for game designers,
+  writers, and worldbuilders. No build tools, no dependencies, no server.
+  Just open the HTML file in any modern browser and start mapping.
+
+  FEATURES
+  ────────
+  Canvas & Editing
+  · Multi-tile grid (configurable cols × rows, tile size, and cell px)
+  · Four brush modes: Paint, Erase, Flood Fill, Select (default)
+  · Brush sizes: 1×1, 3×3, 5×5, 7×7 — slider in sidebar
+  · 4-connected and 8-connected flood fill (toggle in sidebar)
+  · Rectangular selection with Copy / Cut / Paste (4 placement modes)
+  · Per-cell color overrides independent of palette defaults
+  · Undo / Redo stack (Ctrl+Z / Ctrl+Y) — snapshots before any major op
+  · Click outside tile grid to deselect active map
+  · Coordinate bar shows tile, cell, and world coordinates on hover
+
+  Palette
+  · Fully editable symbol palette — categories with color, symbols with
+    individual name and color override
+  · Reorder categories and symbols via ↑↓ arrows
+  · Color clipboard (copy/paste hex between symbols)
+  · Active symbol indicator in sidebar
+
+  Terrain Generation  (Generate modal — three tabs)
+  · Weighted Random: per-symbol % weights with live CDF bar,
+    coherence (smoothing passes), overwrite / skip-non-empty fill modes
+  · Perlin Noise: dual-handle noise bands per symbol, per-symbol
+    disable checkbox, scale / octaves / seed, coherence, Random Bands
+    and Reset buttons. Empty category opt-in for intentional blank cells.
+  · Water (two ordered passes):
+      ① Bodies of Water — Poisson-disk spaced lakes with user-defined
+        depth rings (center → shore), organic Perlin-wobbled ellipse shape
+      ② Rivers & Streams — explicit source→destination pairs, each drawn
+        with noise-guided meander + destination pull. Rivers use ═/║
+        (cardinal), streams use \// (diagonal). Pick source/dst by
+        clicking cells on the map while the modal is transparent.
+  · Water category automatically excluded from terrain generation tabs
+  · Generation state (weights, bands, water settings, tile selection,
+    category selection) persists across modal opens
+
+  Generation Presets
+  · Save / load / delete named presets capturing all three tabs
+  · Presets stored in project .json (travel with the file)
+  · Export presets as standalone .json; import and merge from file
+
+  Export & Project
+  · Save / load projects as .json (version 1 schema)
+  · Autosave to localStorage (debounced 900 ms); restores on page load
+  · Export individual tile or all tiles as .txt files
+  · Copy active tile text to system clipboard
+  · Export symbol palette as a legend .json (char, name, color per symbol)
+
+  Screenshot Mode
+  · Hides header, sidebar, grid lines, tile borders, and active-map
+    highlight for clean screenshotting with the OS / browser tool
+  · 20 px padding around the map; Escape or button to exit
+
+  ARCHITECTURE
+  ────────────
+  · Pure HTML + CSS + vanilla JS — no frameworks, no modules, no build
+  · Single self-contained file — open directly in any modern browser
+  · All mutable state is module-level variables (see STATE section)
+  · Project schema: JSON v1 object (categories, maps, cellColors, presets)
+  · Undo/redo: JSON snapshots of {maps, cellColors} on an array stack (50 max)
+  · Brush painting: square radius applied to all cells within brushRadii[brushSize]
+  · Flood fill: 4-connected or 8-connected (diagonal), switchable via fillConn
+  · Generation algorithms are fully self-contained:
+      - Seeded LCG + Perlin noise (makePerlin / octaveNoise)
+      - 4-connected flood fill (iterative, no recursion)
+      - Poisson-disk sampling for lake placement
+      - Noise-guided pathfinding with destination pull for rivers/streams
+      - River backtrack memory (4-step history) prevents self-crossing
+      - World-coordinate accessors for seamless cross-tile generation
+  · Water generation uses a separate _lakePlaced Set so rivers stop at
+    lake cells but freely cross each other's paths
+  · CSS custom properties (--bg, --text, --accent …) for full theming
+  · Screenshot mode is a single CSS class toggle on <body>
+
+  Open Source — MIT License - Human‑directed project with 100% coding by Claude Sonnet 4.6.
+  ─────────────────────────────────────────────────────────────────
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TERRASCII</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Rajdhani:wght@500;600;700&display=swap');
+
+:root {
+  --bg:      #0c0e13;
+  --surface: #13161e;
+  --panel:   #181c26;
+  --border:  #2a2f3f;
+  --border2: #3a4155;
+  --accent:  #5bf5c8;
+  --accent2: #ffcc44;
+  --accent3: #ff6b6b;
+  --text:    #e8eaf2;   /* primary — bright white-blue                */
+  --text2:   #b0b8d8;   /* secondary — readable mid-tone (was #9098b8)*/
+  --text3:   #7a8498;   /* tertiary / hints — visible (was #5a637a)   */
+  --mono:    'JetBrains Mono', monospace;
+  --head:    'Rajdhani', sans-serif;
+  --cell:    22px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 14px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  height: 100vh;
+}
+
+/* ══ HEADER ══ */
+#header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+#header h1 {
+  font-family: var(--head);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: var(--accent);
+  text-transform: uppercase;
+  white-space: nowrap;
+  margin-right: 2px;
+}
+
+.sep { width: 1px; height: 20px; background: var(--border2); flex-shrink: 0; }
+
+.hbtn {
+  background: transparent;
+  border: 1px solid var(--border2);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .8px;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: all .14s;
+  white-space: nowrap;
+  border-radius: 2px;
+}
+.hbtn:hover          { border-color: var(--accent);  color: var(--accent); }
+.hbtn.danger:hover   { border-color: var(--accent3); color: var(--accent3); }
+.hbtn.project        { border-color: #2a4a3a; color: var(--accent); }
+.hbtn.project:hover  { background: #0e2018; }
+
+#project-name {
+  font-size: 12px;
+  color: var(--accent2);
+  letter-spacing: .5px;
+  white-space: nowrap;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#autosave-badge {
+  font-size: 11px;
+  color: var(--text2);
+  letter-spacing: .5px;
+  white-space: nowrap;
+}
+
+#coord-bar {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text2);
+  letter-spacing: .4px;
+  white-space: nowrap;
+}
+
+/* ══ LAYOUT ══ */
+#app { display: flex; flex: 1; overflow: hidden; }
+
+/* ══ SIDEBAR ══ */
+#sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.s-section {
+  border-bottom: 1px solid var(--border);
+  padding: 11px 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.s-title {
+  font-family: var(--head);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--text2);
+}
+
+/* ══ MODE BUTTONS ══ */
+.mode-row { display: flex; gap: 3px; }
+.mode-btn {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text2);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+  padding: 6px 3px;
+  cursor: pointer;
+  text-align: center;
+  transition: all .12s;
+  border-radius: 2px;
+}
+.mode-btn:hover  { border-color: var(--accent); color: var(--text); }
+.mode-btn.active { background: #0e2018; border-color: var(--accent); color: var(--accent); }
+
+/* ══ PALETTE ══ */
+.cat-block { display: flex; flex-direction: column; gap: 4px; }
+.cat-header { display: flex; align-items: center; gap: 6px; }
+.cat-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; border: 1px solid rgba(255,255,255,.15); }
+.cat-lbl { font-family: var(--head); font-size: 12px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; color: var(--text); }
+.sym-row { display: flex; flex-wrap: wrap; gap: 4px; }
+
+.sym-btn {
+  position: relative;
+  width: 36px; height: 34px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 16px; font-weight: 600;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all .1s;
+  border-radius: 2px;
+}
+.sym-btn:hover  { border-color: rgba(255,255,255,.3); background: #1e2232; }
+.sym-btn.active {
+  border-color: var(--accent);
+  background: #0e2018;
+  box-shadow: 0 0 0 1px var(--accent) inset;
+  filter: brightness(1.4);
+}
+.sym-btn.active::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: .12;
+  pointer-events: none;
+}
+
+.sym-btn .tip {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%; transform: translateX(-50%);
+  background: #1e2232;
+  border: 1px solid var(--border2);
+  color: var(--text);
+  font-size: 11px;
+  padding: 3px 8px;
+  white-space: nowrap;
+  z-index: 60;
+  border-radius: 2px;
+  pointer-events: none;
+  font-weight: 400;
+}
+.sym-btn:hover .tip { display: block; }
+
+/* ══ INPUTS ══ */
+input[type="text"], input[type="number"] {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 4px 7px;
+  outline: none;
+  border-radius: 2px;
+  transition: border-color .12s;
+}
+input[type="text"]:focus, input[type="number"]:focus { border-color: var(--accent); }
+input[type="color"] {
+  width: 28px; height: 24px;
+  padding: 1px 2px;
+  cursor: pointer;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 2px;
+}
+.flex1 { flex: 1; min-width: 0; }
+
+.sbtn {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 5px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all .12s;
+  border-radius: 2px;
+}
+.sbtn:hover        { border-color: var(--accent); color: var(--accent); }
+.sbtn.green        { border-color: #2a503a; color: var(--accent); }
+.sbtn.green:hover  { background: #0e2018; }
+.sbtn.red          { border-color: #503030; color: var(--accent3); }
+.sbtn.red:hover    { background: #200e0e; }
+
+/* ══ REORDER ARROWS ══ */
+.arrow-col { display: flex; flex-direction: column; gap: 1px; flex-shrink: 0; }
+.arr-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text2);
+  font-size: 8px; line-height: 1;
+  width: 17px; height: 12px;
+  cursor: pointer; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 2px; transition: all .1s;
+}
+.arr-btn:hover    { border-color: var(--accent2); color: var(--accent2); }
+.arr-btn:disabled { opacity: .18; cursor: default; pointer-events: none; }
+
+/* ══ CANVAS ══ */
+#canvas-wrap {
+  flex: 1;
+  overflow: auto;
+  padding: 20px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+#world-grid {
+  display: inline-grid;
+  gap: 3px;
+  border: 1px solid var(--border2);
+  padding: 3px;
+  background: #07090e;
+  flex-shrink: 0;
+}
+
+.map-tile {
+  display: grid;
+  position: relative;
+  cursor: default;
+  outline: 1px solid var(--border);
+}
+.map-tile.active-map { outline: 2px solid var(--accent); z-index: 2; }
+
+.cell {
+  width: var(--cell); height: var(--cell);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono);
+  font-size: 13px; font-weight: 600;
+  user-select: none;
+  background: #090b10;
+  border: 1px solid #10131c;
+  color: var(--text);
+  transition: background .04s;
+  cursor: default;
+}
+.cell:hover    { background: #181d2c; }
+.cell.selected { background: #0a2a20 !important; outline: 1px solid var(--accent); outline-offset: -1px; z-index: 1; }
+
+@keyframes flash-src { 0%,100%{background:#2a2000} 50%{background:#554400} }
+@keyframes flash-dst { 0%,100%{background:#002a1a} 50%{background:#005535} }
+.cell.flash-src { animation: flash-src .25s ease-in-out 3; }
+.cell.flash-dst { animation: flash-dst .25s ease-in-out 3; }
+.cell.river-src { background: #3a2800 !important; outline: 1px solid #f0a830; outline-offset: -1px; z-index: 1; }
+.cell.river-dst { background: #002a1a !important; outline: 1px solid var(--accent); outline-offset: -1px; z-index: 1; }
+
+/* ══ MODALS ══ */
+.modal-bg {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.82);
+  z-index: 200;
+  align-items: center; justify-content: center;
+}
+.modal-bg.open { display: flex; }
+
+.modal {
+  background: var(--panel);
+  border: 1px solid var(--border2);
+  width: 480px;
+  max-width: 96vw;
+  max-height: 88vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  border-radius: 3px;
+}
+
+.modal-hdr {
+  display: flex; align-items: center;
+  padding: 12px 15px;
+  border-bottom: 1px solid var(--border);
+  gap: 8px; flex-shrink: 0;
+}
+.modal-hdr h2 {
+  font-family: var(--head);
+  font-size: 14px; font-weight: 700;
+  letter-spacing: 3px; text-transform: uppercase;
+  color: var(--accent); flex: 1;
+}
+.modal-x {
+  background: transparent; border: none;
+  color: var(--text2); font-size: 16px; cursor: pointer;
+  line-height: 1; padding: 0 2px;
+}
+.modal-x:hover { color: var(--accent3); }
+
+.modal-body { padding: 14px; display: flex; flex-direction: column; gap: 11px; overflow-y: auto; }
+.modal-row  { display: flex; gap: 8px; align-items: center; }
+.modal-lbl  { font-size: 12px; color: var(--text); width: 120px; flex-shrink: 0; }
+.modal-foot {
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  display: flex; gap: 7px; justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+.divider { height: 1px; background: var(--border); }
+.note    { font-size: 12px; color: var(--accent3); }
+.muted   { font-size: 12px; color: var(--text2); }
+
+/* ══ PALETTE EDITOR ══ */
+.cat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 9px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.cat-card-hdr  { display: flex; align-items: center; gap: 5px; }
+.sym-edit-list { display: flex; flex-direction: column; gap: 3px; }
+.sym-edit-row  { display: flex; align-items: center; gap: 4px; }
+.sym-preview   {
+  width: 24px; height: 24px; flex-shrink: 0;
+  background: #090b10; border: 1px solid var(--border2);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 13px; font-weight: 600;
+  border-radius: 2px;
+}
+
+/* ══ PROJECT PANEL ══ */
+.proj-row { display: flex; gap: 6px; align-items: center; }
+
+/* ══ TOAST ══ */
+#toast {
+  position: fixed; bottom: 20px; left: 50%;
+  transform: translateX(-50%) translateY(10px);
+  background: #0e2018; border: 1px solid var(--accent);
+  color: var(--accent); font-family: var(--mono);
+  font-size: 12px; letter-spacing: 1.5px;
+  padding: 6px 16px;
+  opacity: 0; pointer-events: none;
+  transition: all .2s; z-index: 500;
+  border-radius: 2px;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+#brush-size-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 14px; height: 14px;
+  border-radius: 50%; background: var(--text2); cursor: pointer;
+  border: 2px solid var(--bg); box-shadow: 0 0 0 1px var(--border2);
+}
+#brush-size-slider::-webkit-slider-thumb:hover { background: var(--accent); }
+
+/* ══ GENERATE MODAL ══ */
+.gen-tab-row { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
+.gen-tab-btn {
+  padding: 7px 14px; font-family: var(--mono); font-size: 11px; letter-spacing: .5px;
+  background: transparent; border: none; border-bottom: 2px solid transparent;
+  color: var(--text2); cursor: pointer; transition: all .12s; margin-bottom: -1px;
+}
+.gen-tab-btn:hover { color: var(--text); }
+.gen-tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+.gen-tab-panel { display: none; flex-direction: column; gap: 12px; }
+.gen-tab-panel.active { display: flex; }
+.gen-mode-row { display: flex; gap: 6px; }
+.gen-mode-btn {
+  flex: 1; padding: 7px; font-family: var(--mono); font-size: 12px;
+  background: var(--surface); border: 1px solid var(--border2);
+  color: var(--text2); cursor: pointer; border-radius: 2px;
+  text-align: center; transition: all .12s;
+}
+.gen-mode-btn.active { background: #0e2018; border-color: var(--accent); color: var(--accent); }
+
+.tile-grid {
+  display: grid;
+  gap: 4px;
+}
+.tile-check {
+  background: var(--surface); border: 1px solid var(--border2);
+  border-radius: 2px; padding: 4px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: all .12s; user-select: none;
+  font-family: var(--mono); font-size: 11px; color: var(--text2);
+  min-height: 36px;
+}
+.tile-check.checked { background: #0e2018; border-color: var(--accent); color: var(--accent); }
+.tile-check:hover   { border-color: var(--text2); }
+
+.gen-sym-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 0; border-bottom: 1px solid var(--border);
+}
+.gen-sym-row:last-child { border-bottom: none; }
+
+.gen-sym-char {
+  width: 26px; height: 26px; flex-shrink: 0;
+  background: #090b10; border: 1px solid var(--border2);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 15px; font-weight: 700;
+  border-radius: 2px;
+}
+
+.gen-sym-name {
+  width: 100px; flex-shrink: 0;
+  font-size: 11px; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* Weight input (weighted mode) */
+.gen-weight-wrap { display: flex; align-items: center; gap: 5px; flex: 1; }
+.gen-weight-wrap input[type="number"] { width: 54px; }
+.gen-weight-bar {
+  flex: 1; height: 6px; background: var(--border);
+  border-radius: 3px; overflow: hidden;
+}
+.gen-weight-fill { height: 100%; border-radius: 3px; transition: width .15s; }
+
+/* Dual range (perlin mode) */
+.dual-range-wrap {
+  flex: 1; position: relative; height: 28px;
+  display: flex; align-items: center;
+}
+.dual-range-track {
+  position: absolute; left: 0; right: 0; height: 6px;
+  background: var(--border); border-radius: 3px;
+}
+.dual-range-fill {
+  position: absolute; height: 6px; border-radius: 3px;
+}
+.dual-range-wrap input[type="range"] {
+  position: absolute; width: 100%;
+  -webkit-appearance: none; appearance: none;
+  background: transparent; pointer-events: none;
+  height: 6px; margin: 0;
+}
+.dual-range-wrap input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--text); border: 2px solid var(--bg);
+  cursor: pointer; pointer-events: all;
+  box-shadow: 0 0 0 1px var(--border2);
+}
+.dual-range-wrap input[type="range"]::-webkit-slider-thumb:hover {
+  background: var(--accent);
+}
+.dual-range-val {
+  width: 52px; flex-shrink: 0;
+  font-size: 10px; color: var(--text2);
+  text-align: right; letter-spacing: .3px;
+}
+
+/* Coherence / scale sliders */
+.param-row { display: flex; align-items: center; gap: 10px; }
+.param-row label { font-size: 11px; color: var(--text); width: 100px; flex-shrink: 0; }
+.param-row input[type="range"] {
+  flex: 1; -webkit-appearance: none; appearance: none;
+  height: 5px; background: var(--border); border-radius: 3px; outline: none;
+}
+.param-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 14px; height: 14px;
+  border-radius: 50%; background: var(--text2); cursor: pointer;
+  border: 2px solid var(--bg); box-shadow: 0 0 0 1px var(--border2);
+}
+.param-row input[type="range"]::-webkit-slider-thumb:hover { background: var(--accent); }
+.param-val { width: 36px; text-align: right; font-size: 11px; color: var(--text); font-family: var(--mono); }
+
+/* Water rings */
+.water-ring-row { display: flex; align-items: center; gap: 6px; padding: 4px 0; border-bottom: 1px solid var(--border); }
+.water-ring-row:last-child { border-bottom: none; }
+.water-sym-pick { font-family: var(--mono); font-size: 14px; font-weight: 700; width: 32px; height: 28px; background: #090b10; border: 1px solid var(--border2); color: var(--text); text-align: center; border-radius: 2px; }
+.water-sym-pick:focus { outline: none; border-color: var(--accent); }
+
+/* River pairs */
+.river-pair-row {
+  display: flex; align-items: center; gap: 5px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 2px; padding: 6px 8px;
+}
+.river-coord-btn {
+  font-family: var(--mono); font-size: 10px; letter-spacing: .3px;
+  background: #090b10; border: 1px solid var(--border2);
+  color: var(--text2); cursor: pointer; padding: 3px 7px;
+  border-radius: 2px; white-space: nowrap; transition: all .12s; flex-shrink: 0;
+}
+.river-coord-btn:hover   { border-color: var(--accent2); color: var(--accent2); }
+.river-coord-btn.set     { border-color: var(--accent); color: var(--accent); }
+.river-coord-btn.picking { border-color: var(--accent3); color: var(--accent3); animation: blink .6s step-end infinite; }
+@keyframes blink { 50% { opacity: .4; } }
+.river-arrow { color: var(--text2); font-size: 13px; flex-shrink: 0; }
+
+/* Preset list */
+.preset-row {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 2px; padding: 7px 10px;
+}
+.preset-name {
+  flex: 1; font-size: 12px; color: var(--text);
+  font-family: var(--mono); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.preset-date { font-size: 10px; color: var(--text3); flex-shrink: 0; }
+.split-btn-wrap { position: relative; display: inline-flex; }
+.split-btn-wrap .split-main { border-radius: 2px 0 0 2px; border-right: none; }
+.split-btn-wrap .split-caret {
+  border-radius: 0 2px 2px 0; padding: 3px 7px;
+  background: var(--surface); border: 1px solid #2a503a;
+  color: var(--accent); cursor: pointer; font-size: 10px;
+  transition: all .12s;
+}
+.split-btn-wrap .split-caret:hover { background: #0e2018; }
+.split-dropdown {
+  display: none; position: absolute; top: 100%; right: 0;
+  background: var(--panel); border: 1px solid var(--border2);
+  z-index: 100; min-width: 130px; border-radius: 2px;
+  box-shadow: 0 4px 12px rgba(0,0,0,.4);
+}
+.split-dropdown.open { display: block; }
+.split-dropdown button {
+  display: block; width: 100%; text-align: left;
+  background: transparent; border: none;
+  color: var(--text2); font-family: var(--mono); font-size: 11px;
+  padding: 7px 12px; cursor: pointer; transition: background .1s;
+}
+.split-dropdown button:hover { background: var(--surface); color: var(--accent); }
+/* ══ SCREENSHOT MODE ══
+   Toggled by toggleScreenshot(). Hides all UI chrome so the map
+   fills the view cleanly for the user to screenshot with their own tool. */
+body.screenshot-mode #header     { display: none; }
+body.screenshot-mode #sidebar    { display: none; }
+body.screenshot-mode #canvas-wrap { padding: 20px; }
+body.screenshot-mode #world-grid  { gap: 0; border: none; padding: 0; background: var(--bg); }
+body.screenshot-mode .map-tile    { outline: none; }
+body.screenshot-mode .map-tile.active-map { outline: none; }
+body.screenshot-mode .cell        { border-color: transparent; }
+body.screenshot-mode #screenshot-exit {
+  display: flex !important;
+}</style>
+</head>
+<body>
+
+<!-- ══ HEADER ══ -->
+<div id="header">
+  <h1>TERRASCII</h1>
+  <div class="sep"></div>
+  <button class="hbtn project" onclick="newProject()">⊕ New</button>
+  <button class="hbtn project" onclick="openProject()">⊞ Open</button>
+  <button class="hbtn project" onclick="saveProject()">⊟ Save</button>
+  <input type="file" id="open-file-input" accept=".json" style="display:none" onchange="loadProjectFile(event)">
+  <span id="project-name">unsaved project</span>
+  <div class="sep"></div>
+  <button class="hbtn" onclick="openGridConfig()">⊞ Grid</button>
+  <button class="hbtn" onclick="openPaletteEditor()">✦ Palette</button>
+  <button class="hbtn" onclick="openGenModal()" style="border-color:#3a5a3a;color:#8ef0a0">⚙ Generate</button>
+  <div class="sep"></div>
+  <button class="hbtn" onclick="copyActiveMap()" title="Copy active map text to clipboard">⎘ Copy Map</button>
+  <button class="hbtn" onclick="downloadActiveMap()">↓ Save Map</button>
+  <button class="hbtn" onclick="exportMaps()" title="Export all maps as individual .txt files">↓ Export Maps</button>
+  <button class="hbtn" onclick="exportLegend()" title="Export symbol palette as a legend .json file">↓ Legend</button>
+  <div class="sep"></div>
+  <button class="hbtn" onclick="toggleScreenshot()" title="Hide UI for screenshotting — press Escape or click to exit">⊡ Screenshot</button>
+  <div class="sep"></div>
+  <button class="hbtn" id="btn-undo" onclick="undo()" title="Undo (Ctrl+Z)" style="opacity:.4" disabled>↩ Undo</button>
+  <button class="hbtn" id="btn-redo" onclick="redo()" title="Redo (Ctrl+Y)" style="opacity:.4" disabled>↪ Redo</button>
+  <span id="autosave-badge"></span>
+  <div id="coord-bar">—</div>
+</div>
+
+<!-- ══ SCREENSHOT EXIT OVERLAY ══ -->
+<div id="screenshot-exit" style="
+  display: none; position: fixed; top: 12px; right: 12px; z-index: 9999;
+  background: rgba(0,0,0,.7); border: 1px solid var(--accent3);
+  color: var(--accent3); font-family: var(--mono); font-size: 11px;
+  padding: 6px 14px; border-radius: 2px; cursor: pointer;
+  letter-spacing: .5px;" onclick="toggleScreenshot()">
+  ✕ Exit Screenshot Mode &nbsp;·&nbsp; Esc
+</div>
+
+<!-- ══ APP ══ -->
+<div id="app">
+
+  <!-- SIDEBAR -->
+  <div id="sidebar">
+
+    <!-- Brush + Selection Tools -->
+    <div class="s-section">
+      <div class="s-title">Brush</div>
+      <div class="mode-row">
+        <button class="mode-btn"        id="modePaint"  onclick="setMode('paint')">✏ Paint</button>
+        <button class="mode-btn"        id="modeErase"  onclick="setMode('erase')">⌫ Erase</button>
+        <button class="mode-btn"        id="modeFill"   onclick="setMode('fill')">▣ Fill</button>
+        <button class="mode-btn active" id="modeSelect" onclick="setMode('select')">⬚ Select</button>
+      </div>
+
+      <!-- Brush Size (paint/erase) -->
+      <div style="display:flex;align-items:center;gap:8px;margin-top:2px">
+        <span style="font-size:11px;color:var(--text2);width:68px;flex-shrink:0">Brush size</span>
+        <input type="range" id="brush-size-slider" min="0" max="3" value="0" step="1"
+          style="flex:1;height:5px;-webkit-appearance:none;appearance:none;background:var(--border);border-radius:3px;outline:none"
+          oninput="brushSize=+this.value;document.getElementById('brush-size-lbl').textContent=brushLabels[brushSize]">
+        <span id="brush-size-lbl" style="font-size:11px;color:var(--text);font-family:var(--mono);width:26px;text-align:right">1×1</span>
+      </div>
+
+      <!-- Fill mode: 4-connected vs 8-connected -->
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:11px;color:var(--text2);width:68px;flex-shrink:0">Fill mode</span>
+        <div style="display:flex;gap:3px;flex:1">
+          <button class="mode-btn active" id="fill4btn" onclick="setFillConn(4)" style="font-size:10px;padding:4px 6px">4-conn</button>
+          <button class="mode-btn"        id="fill8btn" onclick="setFillConn(8)" style="font-size:10px;padding:4px 6px">8-conn</button>
+        </div>
+      </div>
+
+      <div class="muted" style="line-height:1.55">Drag to select · Ctrl+C copy<br>Ctrl+X cut · Ctrl+V paste · Esc clear<br>Ctrl+Z undo · Ctrl+Y redo</div>
+      <div class="mode-row">
+        <button class="mode-btn" onclick="selectionCopy()"  title="Ctrl+C">⎘ Copy</button>
+        <button class="mode-btn" onclick="selectionCut()"   title="Ctrl+X">✂ Cut</button>
+        <button class="mode-btn" onclick="openPasteModal()" title="Ctrl+V">⧉ Paste</button>
+      </div>
+      <div class="mode-row" style="margin-top:2px">
+        <button class="mode-btn" onclick="clearActiveMap()" style="color:var(--accent3);border-color:#503030" onmouseover="this.style.background='#200e0e'" onmouseout="this.style.background=''">✕ Clear Map</button>
+        <button class="mode-btn" onclick="clearAll()" style="color:var(--accent3);border-color:#503030" onmouseover="this.style.background='#200e0e'" onmouseout="this.style.background=''">✕ Clear All</button>
+      </div>
+    </div>
+
+    <!-- Symbols Palette -->
+    <div class="s-section" style="gap:9px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div class="s-title">Symbols</div>
+        <div id="sel-indicator" style="display:flex;align-items:center;gap:6px">
+          <span id="sel-char" style="
+            font-family:var(--mono);font-size:17px;font-weight:700;
+            width:28px;height:28px;border-radius:3px;
+            background:#0e2018;border:1px solid var(--accent);
+            display:flex;align-items:center;justify-content:center;
+            color:var(--accent);line-height:1;flex-shrink:0;
+          ">·</span>
+          <span id="sel-name" style="font-size:11px;color:var(--text2);letter-spacing:.3px;"></span>
+        </div>
+      </div>
+      <div id="palette-area"></div>
+    </div>
+
+  </div>
+
+  <!-- CANVAS -->
+  <div id="canvas-wrap">
+    <div id="world-grid"></div>
+  </div>
+
+</div>
+
+<!-- ══ MODAL: Grid Config ══ -->
+<div class="modal-bg" id="modal-grid">
+  <div class="modal">
+    <div class="modal-hdr">
+      <h2>Grid Configuration</h2>
+      <button class="modal-x" onclick="closeModal('modal-grid')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-row"><span class="modal-lbl">Grid columns</span>
+        <input type="number" id="cfg-cols" min="1" max="10" value="3" style="width:58px">
+        <span class="muted">tiles wide</span></div>
+      <div class="modal-row"><span class="modal-lbl">Grid rows</span>
+        <input type="number" id="cfg-rows" min="1" max="10" value="3" style="width:58px">
+        <span class="muted">tiles tall</span></div>
+      <div class="divider"></div>
+      <div class="modal-row"><span class="modal-lbl">Tile width</span>
+        <input type="number" id="cfg-tw" min="1" max="64" value="18" style="width:58px">
+        <span class="muted">cells</span></div>
+      <div class="modal-row"><span class="modal-lbl">Tile height</span>
+        <input type="number" id="cfg-th" min="1" max="64" value="18" style="width:58px">
+        <span class="muted">cells</span></div>
+      <div class="divider"></div>
+      <div class="modal-row"><span class="modal-lbl">Cell size</span>
+        <input type="number" id="cfg-cell" min="12" max="40" value="22" style="width:58px">
+        <span class="muted">px per cell</span></div>
+      <p class="note">⚠ Applying resets all map data.</p>
+    </div>
+    <div class="modal-foot">
+      <button class="sbtn" onclick="closeModal('modal-grid')">Cancel</button>
+      <button class="sbtn green" onclick="applyGridConfig()">Apply</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: Palette Editor ══ -->
+<div class="modal-bg" id="modal-palette">
+  <div class="modal" style="width:570px">
+    <div class="modal-hdr">
+      <h2>Edit Palette</h2>
+      <button class="modal-x" onclick="closePaletteEditor()">✕</button>
+    </div>
+    <div class="modal-body" id="palette-editor-body"></div>
+    <div class="modal-foot">
+      <div style="display:flex;align-items:center;gap:8px;flex:1">
+        <span style="font-size:11px;color:var(--text2)">Color clipboard:</span>
+        <span id="color-clip-swatch" style="
+          width:18px;height:18px;border-radius:2px;border:1px solid var(--border2);
+          display:inline-block;vertical-align:middle;background:#2a2f3f;
+        "></span>
+        <span id="color-clip-val" style="font-size:11px;color:var(--text2);font-family:var(--mono)">empty</span>
+        <button class="sbtn" style="padding:3px 8px;font-size:11px" onclick="colorClip=null;updateColorClipUI()">✕ Clear</button>
+      </div>
+      <button class="sbtn" onclick="addCategory()">+ Add Category</button>
+      <button class="sbtn green" onclick="closePaletteEditor()">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: Paste Destination ══ -->
+<div class="modal-bg" id="modal-paste">
+  <div class="modal" style="width:400px">
+    <div class="modal-hdr">
+      <h2>Paste Destination</h2>
+      <button class="modal-x" onclick="closeModal('modal-paste')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="paste-info" class="muted"></div>
+      <div class="divider"></div>
+      <div style="display:flex;flex-direction:column;gap:5px">
+        <button class="sbtn green" style="padding:8px;text-align:left" onclick="execPaste('topleft')">
+          ↖ Top-left of active map <span style="color:var(--text2);float:right">row 0, col 0</span>
+        </button>
+        <button class="sbtn" id="paste-cursor-btn" style="padding:8px;text-align:left" onclick="execPaste('cursor')">
+          ⊹ At cursor position <span id="paste-cursor-lbl" style="color:var(--text2);float:right">—</span>
+        </button>
+        <button class="sbtn" id="paste-samepos-btn" style="padding:8px;text-align:left" onclick="execPaste('samepos')">
+          ⌖ Same position as source <span id="paste-samepos-lbl" style="color:var(--text2);float:right">—</span>
+        </button>
+      </div>
+      <div class="divider"></div>
+      <div class="muted" style="margin-bottom:2px">Paste to specific map &amp; offset:</div>
+      <div class="modal-row">
+        <span class="modal-lbl">Map (col, row)</span>
+        <input type="number" id="paste-mc" min="0" value="0" style="width:50px">
+        <span class="muted">,</span>
+        <input type="number" id="paste-mr" min="0" value="0" style="width:50px">
+      </div>
+      <div class="modal-row">
+        <span class="modal-lbl">Offset (col, row)</span>
+        <input type="number" id="paste-oc" min="0" value="0" style="width:50px">
+        <span class="muted">,</span>
+        <input type="number" id="paste-or" min="0" value="0" style="width:50px">
+      </div>
+      <button class="sbtn green" style="width:100%;text-align:center;padding:7px;margin-top:2px" onclick="execPaste('custom')">Paste Here</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: New Project confirm ══ -->
+<div class="modal-bg" id="modal-new">
+  <div class="modal" style="width:360px">
+    <div class="modal-hdr">
+      <h2>New Project</h2>
+      <button class="modal-x" onclick="closeModal('modal-new')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-row"><span class="modal-lbl">Project name</span>
+        <input type="text" id="new-proj-name" placeholder="my-map" class="flex1"></div>
+      <p class="note">⚠ Starting a new project will discard unsaved changes.</p>
+    </div>
+    <div class="modal-foot">
+      <button class="sbtn" onclick="closeModal('modal-new')">Cancel</button>
+      <button class="sbtn green" onclick="confirmNewProject()">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: Generate ══ -->
+<div class="modal-bg" id="modal-gen">
+  <div class="modal" style="width:600px">
+    <div class="modal-hdr">
+      <h2>Generate Terrain</h2>
+      <button class="modal-x" onclick="closeModal('modal-gen')">✕</button>
+    </div>
+    <div class="modal-body">
+
+      <!-- Tile selection (shared) -->
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <span class="s-title">Tiles to Generate</span>
+          <div style="display:flex;gap:6px">
+            <button class="sbtn" style="padding:3px 8px;font-size:11px" onclick="genSelectAll(true)">All</button>
+            <button class="sbtn" style="padding:3px 8px;font-size:11px" onclick="genSelectAll(false)">None</button>
+          </div>
+        </div>
+        <div class="tile-grid" id="gen-tile-grid"></div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Tab bar -->
+      <div class="gen-tab-row">
+        <button class="gen-tab-btn active" id="gen-tab-weighted" onclick="setGenTab('weighted')">⊹ Weighted</button>
+        <button class="gen-tab-btn"        id="gen-tab-perlin"   onclick="setGenTab('perlin')">∿ Perlin</button>
+        <button class="gen-tab-btn"        id="gen-tab-water"    onclick="setGenTab('water')">≋ Water</button>
+        <button class="gen-tab-btn"        id="gen-tab-presets"  onclick="setGenTab('presets')">⊞ Presets</button>
+      </div>
+
+      <!-- ══ TAB: WEIGHTED ══ -->
+      <div class="gen-tab-panel active" id="gen-panel-weighted">
+        <div class="param-row">
+          <label>Coherence</label>
+          <input type="range" id="gen-coherence" min="0" max="10" value="0"
+            oninput="genCoherence=+this.value;document.getElementById('gen-coherence-val').textContent=this.value">
+          <span class="param-val" id="gen-coherence-val">0</span>
+          <span class="muted" style="font-size:10px">smoothing passes</span>
+        </div>
+        <div class="param-row">
+          <label>Fill mode</label>
+          <div style="display:flex;gap:6px;flex:1">
+            <button class="gen-mode-btn active" id="gen-fill-overwrite" onclick="setGenFill('overwrite')" style="flex:0 0 auto;padding:4px 12px">Overwrite</button>
+            <button class="gen-mode-btn"        id="gen-fill-skip"      onclick="setGenFill('skip')"      style="flex:0 0 auto;padding:4px 12px">Skip non-empty</button>
+          </div>
+        </div>
+        <div class="divider"></div>
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <span class="s-title">Categories</span>
+            <div style="display:flex;gap:6px">
+              <button class="sbtn" style="padding:3px 8px;font-size:11px" onclick="genSelectCats(true)">All</button>
+              <button class="sbtn" style="padding:3px 8px;font-size:11px" onclick="genSelectCats(false)">None</button>
+            </div>
+          </div>
+          <div id="gen-cat-list-w" style="display:flex;flex-wrap:wrap;gap:5px"></div>
+          <div class="muted" style="font-size:10px;margin-top:3px">Water category is excluded — use the Water tab for rivers &amp; lakes.</div>
+        </div>
+        <div class="divider"></div>
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <span class="s-title">Symbols &amp; Weights</span>
+            <button class="sbtn" style="padding:3px 9px;font-size:11px" onclick="resetGenSymbols()">⊘ Reset</button>
+          </div>
+          <div id="gen-sym-list-w"></div>
+        </div>
+      </div>
+
+      <!-- ══ TAB: PERLIN ══ -->
+      <div class="gen-tab-panel" id="gen-panel-perlin">
+        <div class="param-row">
+          <label>Coherence</label>
+          <input type="range" id="gen-coherence-p" min="0" max="10" value="0"
+            oninput="genCoherence=+this.value;document.getElementById('gen-coherence-pv').textContent=this.value">
+          <span class="param-val" id="gen-coherence-pv">0</span>
+          <span class="muted" style="font-size:10px">smoothing passes</span>
+        </div>
+        <div class="param-row">
+          <label>Fill mode</label>
+          <div style="display:flex;gap:6px;flex:1">
+            <button class="gen-mode-btn active" id="gen-fill-overwrite-p" onclick="setGenFill('overwrite')" style="flex:0 0 auto;padding:4px 12px">Overwrite</button>
+            <button class="gen-mode-btn"        id="gen-fill-skip-p"      onclick="setGenFill('skip')"      style="flex:0 0 auto;padding:4px 12px">Skip non-empty</button>
+          </div>
+        </div>
+        <div class="param-row">
+          <label>Scale</label>
+          <input type="range" id="gen-scale" min="1" max="20" value="5"
+            oninput="genScale=+this.value;document.getElementById('gen-scale-val').textContent=this.value">
+          <span class="param-val" id="gen-scale-val">5</span>
+        </div>
+        <div class="param-row">
+          <label>Octaves</label>
+          <input type="range" id="gen-octaves" min="1" max="6" value="3"
+            oninput="genOctaves=+this.value;document.getElementById('gen-octaves-val').textContent=this.value">
+          <span class="param-val" id="gen-octaves-val">3</span>
+        </div>
+        <div class="param-row">
+          <label>Seed</label>
+          <input type="number" id="gen-seed" value="42" style="width:80px" oninput="genSeed=+this.value">
+          <button class="sbtn" style="padding:4px 10px;font-size:11px"
+            onclick="genSeed=Math.floor(Math.random()*99999);document.getElementById('gen-seed').value=genSeed">↺ Random</button>
+        </div>
+        <div class="divider"></div>
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <span class="s-title">Categories</span>
+            <div style="display:flex;gap:6px">
+              <button class="sbtn" style="padding:3px 8px;font-size:11px" onclick="genSelectCats(true)">All</button>
+              <button class="sbtn" style="padding:3px 8px;font-size:11px" onclick="genSelectCats(false)">None</button>
+            </div>
+          </div>
+          <div id="gen-cat-list-p" style="display:flex;flex-wrap:wrap;gap:5px"></div>
+          <div class="muted" style="font-size:10px;margin-top:3px">Water category is excluded — use the Water tab for rivers &amp; lakes.</div>
+        </div>
+        <div class="divider"></div>
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <span class="s-title">Symbols &amp; Noise Bands</span>
+            <div style="display:flex;gap:5px">
+              <button class="sbtn" style="padding:3px 9px;font-size:11px" onclick="randomNoiseBands()">↺ Random Bands</button>
+              <button class="sbtn" style="padding:3px 9px;font-size:11px" onclick="resetGenSymbols()">⊘ Reset</button>
+            </div>
+          </div>
+          <div id="gen-sym-list-p"></div>
+        </div>
+      </div>
+
+      <!-- ══ TAB: WATER ══ -->
+      <div class="gen-tab-panel" id="gen-panel-water">
+        <div class="muted" style="font-size:10px;line-height:1.5;padding:2px 0 4px">
+          Generate runs in order: <strong style="color:var(--text2)">① Bodies of Water</strong> → <strong style="color:var(--text2)">② Rivers &amp; Streams</strong>. Run terrain (Weighted/Perlin) first, then Water.
+        </div>
+
+        <!-- ① Bodies of Water -->
+        <div class="s-title">① Bodies of Water</div>
+
+        <div class="param-row">
+          <label>Lake count</label>
+          <input type="range" id="wtr-lakes" min="0" max="10" value="2"
+            oninput="document.getElementById('wtr-lakes-v').textContent=this.value">
+          <span class="param-val" id="wtr-lakes-v">2</span>
+        </div>
+        <div class="param-row">
+          <label>Min radius</label>
+          <input type="number" id="wtr-rad-min" min="1" max="20" value="3" style="width:58px">
+          <span class="muted">Max</span>
+          <input type="number" id="wtr-rad-max" min="1" max="30" value="8" style="width:58px">
+          <span class="muted" style="font-size:10px">cells</span>
+        </div>
+        <div class="param-row">
+          <label>Seed</label>
+          <input type="number" id="wtr-lake-seed" value="13" style="width:80px">
+          <button class="sbtn" style="padding:4px 10px;font-size:11px"
+            onclick="document.getElementById('wtr-lake-seed').value=Math.floor(Math.random()*99999)">↺ Random</button>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px">
+          <span style="font-size:11px;color:var(--text2)">Depth rings (center → shore):</span>
+          <button class="sbtn" style="padding:3px 9px;font-size:11px" onclick="addWaterRing()">+ Ring</button>
+        </div>
+        <div id="water-ring-list"></div>
+        <div class="muted" style="font-size:10px">First ring = center (deepest). Last ring = shore.</div>
+
+        <div class="divider"></div>
+
+        <!-- ② Rivers & Streams -->
+        <div class="s-title">② Rivers &amp; Streams</div>
+
+        <div class="param-row">
+          <label>Meander</label>
+          <input type="range" id="wtr-meander" min="0" max="10" value="4"
+            oninput="document.getElementById('wtr-meander-v').textContent=this.value">
+          <span class="param-val" id="wtr-meander-v">4</span>
+        </div>
+        <div class="param-row">
+          <label>Seed</label>
+          <input type="number" id="wtr-seed" value="7" style="width:80px">
+          <button class="sbtn" style="padding:4px 10px;font-size:11px"
+            onclick="document.getElementById('wtr-seed').value=Math.floor(Math.random()*99999)">↺ Random</button>
+        </div>
+
+        <div class="divider"></div>
+        <div style="font-size:11px;color:var(--text2)">Channel symbols (from palette):</div>
+        <div style="display:flex;flex-direction:column;gap:5px;margin-top:4px">
+          <div class="modal-row">
+            <span class="modal-lbl" style="width:130px">Stream (\ /)</span>
+            <select id="wtr-sym-stream-a" class="water-sym-pick" style="width:auto;padding:2px 4px;font-size:12px;background:var(--surface);border:1px solid var(--border2);color:var(--text);border-radius:2px"></select>
+            <span class="muted" style="font-size:10px;margin-left:4px">diagonal, short branches</span>
+          </div>
+          <div class="modal-row">
+            <span class="modal-lbl" style="width:130px">River (═ ║)</span>
+            <select id="wtr-sym-river-h" class="water-sym-pick" style="width:auto;padding:2px 4px;font-size:12px;background:var(--surface);border:1px solid var(--border2);color:var(--text);border-radius:2px"></select>
+            <span class="muted" style="font-size:10px;margin-left:4px">horiz</span>
+            <select id="wtr-sym-river-v" class="water-sym-pick" style="width:auto;padding:2px 4px;font-size:12px;background:var(--surface);border:1px solid var(--border2);color:var(--text);border-radius:2px"></select>
+            <span class="muted" style="font-size:10px;margin-left:4px">vert</span>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:11px;color:var(--text2)">River &amp; stream paths (source → destination):</span>
+          <div class="split-btn-wrap">
+            <button class="sbtn green split-main" style="padding:3px 9px;font-size:11px" onclick="addRiverPair('river')">+ Add River</button>
+            <button class="split-caret" onclick="toggleAddDropdown(this)">▾</button>
+            <div class="split-dropdown" id="add-pair-dropdown">
+              <button onclick="addRiverPair('river');closeAddDropdown()">⟹ River (═ ║)</button>
+              <button onclick="addRiverPair('stream');closeAddDropdown()">⤳ Stream (\ /)</button>
+            </div>
+          </div>
+        </div>
+        <div id="river-pair-list" style="display:flex;flex-direction:column;gap:5px"></div>
+        <div class="muted" style="font-size:10px">Click Set to pick a cell on the map. Close modal first is not needed — clicking the map sets the point.</div>
+
+        <div class="divider"></div>
+        <div class="param-row">
+          <label>Fill mode</label>
+          <div style="display:flex;gap:6px;flex:1">
+            <button class="gen-mode-btn active" id="gen-fill-overwrite-w" onclick="setGenFill('overwrite')" style="flex:0 0 auto;padding:4px 12px">Overwrite</button>
+            <button class="gen-mode-btn"        id="gen-fill-skip-w"      onclick="setGenFill('skip')"      style="flex:0 0 auto;padding:4px 12px">Stop at water</button>
+          </div>
+        </div>
+
+      </div><!-- end water panel -->
+
+      <!-- ══ TAB: PRESETS ══ -->
+      <div class="gen-tab-panel" id="gen-panel-presets">
+        <div class="muted" style="font-size:10px;line-height:1.5;padding:2px 0 4px">
+          Presets capture all three tabs (Weighted, Perlin, Water) including symbols, bands, rings, and river pairs. Saved with the project and exportable as standalone <code style="color:var(--accent2)">.json</code> files.
+        </div>
+
+        <div style="display:flex;gap:6px">
+          <input type="text" id="preset-name-input" placeholder="Preset name…" class="flex1" style="font-size:12px">
+          <button class="sbtn green" style="padding:4px 12px;font-size:11px" onclick="savePreset()">⊕ Save Current</button>
+        </div>
+
+        <div class="divider"></div>
+
+        <div id="preset-list" style="display:flex;flex-direction:column;gap:5px">
+          <div class="muted" style="font-size:11px;padding:4px 0">No presets saved yet.</div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div style="display:flex;gap:6px">
+          <button class="sbtn" style="flex:1;font-size:11px" onclick="exportPresets()">↓ Export Presets</button>
+          <button class="sbtn" style="flex:1;font-size:11px" onclick="document.getElementById('preset-import-input').click()">↑ Import Presets</button>
+          <input type="file" id="preset-import-input" accept=".json" style="display:none" onchange="importPresets(event)">
+        </div>
+      </div><!-- end presets panel -->
+
+    </div>
+    <div class="modal-foot">
+      <button class="sbtn" onclick="closeModal('modal-gen')">Cancel</button>
+      <button class="sbtn green" onclick="runGeneration()">⚙ Generate</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ════════════════════════════════════════════
+   DEFAULTS
+════════════════════════════════════════════ */
+const DEFAULT_CATEGORIES = [
+  { id: uid(), name: 'Water', color: '#5aaee8', symbols: [
+    { char: '~', name: 'Shallow water', color: '#6ec6f5' },
+    { char: '≈', name: 'Deep water',    color: '#1a4e8a' },
+    { char: '═', name: 'River (H)',     color: '#4a90c4' },
+    { char: '║', name: 'River (V)',     color: '#4a90c4' },
+    { char: '\\',name: 'Stream (\\)',   color: '#7ab8e0' },
+    { char: '/', name: 'Stream (/)',    color: '#7ab8e0' },
+  ]},
+  { id: uid(), name: 'Land', color: '#82c860', symbols: [
+    { char: '.', name: 'Grassland', color: '#50e040' },
+    { char: ',', name: 'Scrub',     color: '#2a6630' },
+    { char: '·', name: 'Plains',    color: '#c8a84a' },
+    { char: '"', name: 'Desert',    color: '#c4a86a' },
+    { char: '∴', name: 'Badlands',  color: '#c05830' },
+    { char: '≡', name: 'Swamp',     color: '#4a7858' },
+  ]},
+  { id: uid(), name: 'Elevation', color: '#c8b898', symbols: [
+    { char: '^', name: 'Hills',           color: '#8b6040' },
+    { char: '▲', name: 'Mountain peak',   color: '#ddd8cc' },
+    { char: '#', name: 'Cliffs',          color: '#7a5030' },
+    { char: '█', name: 'Impassable rock', color: '#3a2418' },
+  ]},
+  { id: uid(), name: 'Vegetation', color: '#4ade78', symbols: [
+    { char: 'T', name: 'Tree',         color: '#38a030' },
+    { char: '↑', name: 'Pine',         color: '#2a8828' },
+    { char: '♣', name: 'Dense forest', color: '#1a5c18' },
+    { char: '*', name: 'Brush',        color: '#80c060' },
+  ]},
+  { id: uid(), name: 'Structures', color: '#f0b858', symbols: [
+    { char: 'o', name: 'Settlement',        color: '#e0c060' },
+    { char: '⌂', name: 'Town',              color: '#e08830' },
+    { char: '+', name: 'Temple / Ruins',    color: '#c0a898' },
+    { char: 'x', name: 'Dungeon entrance',  color: '#9858b8' },
+    { char: '?', name: 'Point of interest', color: '#58b8d8' },
+  ]},
+  { id: uid(), name: 'Empty', color: '#505878', symbols: [
+    { char: ' ', name: 'Clear', color: '' },
+  ]},
+];
+
+/* ════════════════════════════════════════════
+   STATE
+   All mutable editor state lives here as module-level variables.
+   No global objects or classes — keeping it simple for open-source readability.
+════════════════════════════════════════════ */
+
+// Grid dimensions — number of tiles across/down
+let GRID_COLS = 3, GRID_ROWS = 3;
+// Each tile's cell dimensions and rendered pixel size per cell
+let TILE_W = 18, TILE_H = 18;
+let CELL_PX = 22;
+
+// categories: Array<{id, name, color, symbols: Array<{char, name, color}>}>
+// The palette — all symbol definitions the user can paint with
+let categories = [];
+// maps[mi]: TILE_H × TILE_W 2D array of single characters
+let maps = [];
+// cellColors: "mi,r,c" → hex color override (when a cell has a custom color)
+let cellColors = {};
+
+// Active editor state
+let activeMap    = 0;       // currently focused tile index
+let currentChar  = '.';     // symbol being painted
+let currentColor = '';      // per-cell color override for painting ('' = use palette color)
+let mode         = 'select'; // 'paint' | 'erase' | 'fill' | 'select'
+let isPainting   = false;   // true while mouse button is held on a cell
+
+// Brush size — 0=1×1, 1=3×3, 2=5×5, 3=7×7
+let brushSize    = 0;
+const brushLabels = ['1×1', '3×3', '5×5', '7×7'];
+const brushRadii  = [0, 1, 2, 3];  // radius in cells (0 = just the center cell)
+
+// Flood fill connectivity — 4-connected (default) or 8-connected (diagonals)
+let fillConn = 4;
+
+// _strokeUndoPushed: prevents double-push when dragging across cells in a single stroke
+let _strokeUndoPushed = false;
+const undoStack = [];
+const redoStack = [];
+const MAX_UNDO  = 50;  // cap to avoid unbounded memory growth
+
+// Selection / clipboard
+let sel          = null;    // {mi, r0, c0, r1, c1} — current selection bounds
+let selStart     = null;    // {mi, r, c} — drag start cell
+let isSelecting  = false;   // true while selection drag is in progress
+let lastHover    = null;    // {mi, r, c} — last cell the cursor was over
+let clipboard    = null;    // {rows, colors, srcMi, srcR0, srcC0} — copy/cut buffer
+let colorClip    = null;    // hex string — single-color clipboard for the palette editor
+
+// Project metadata
+let projectName  = 'unsaved project';
+const LS_KEY     = 'ascii-map-editor-v1'; // localStorage key for autosave
+
+// ── Utility helpers ──
+/** Generates a short random alphanumeric id — used for category ids */
+function uid() { return Math.random().toString(36).slice(2, 9); }
+/** Clamps v to the range [lo, hi] */
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+/* ════════════════════════════════════════════
+   UNDO / REDO
+   Snapshots capture maps + cellColors for all tiles.
+   Pushed before any destructive operation: paint-stroke-end, fill,
+   generation, paste, cut, clear.
+════════════════════════════════════════════ */
+
+/** Serialises maps + cellColors into a compact snapshot object. */
+function makeSnapshot() {
+  return {
+    maps:       maps.map(tile => tile.map(row => row.join(''))),
+    cellColors: Object.assign({}, cellColors),
+  };
+}
+
+/**
+ * Pushes the current state onto the undo stack.
+ * Clears the redo stack (a new branch was taken).
+ * Caps the stack at MAX_UNDO entries.
+ */
+function pushUndo() {
+  undoStack.push(makeSnapshot());
+  if (undoStack.length > MAX_UNDO) undoStack.shift();
+  redoStack.length = 0;  // new edit invalidates redo history
+  updateUndoRedoBtns();
+}
+
+/** Restores a snapshot into maps + cellColors and re-renders all tiles. */
+function applySnapshot(snap) {
+  snap.maps.forEach((rows, mi) => {
+    maps[mi] = rows.map(row => Array.from(row.padEnd(TILE_W, ' ')));
+  });
+  cellColors = Object.assign({}, snap.cellColors);
+  const total = GRID_COLS * GRID_ROWS;
+  for (let i = 0; i < total; i++) refreshMap(i);
+}
+
+/** Undoes the last operation. */
+function undo() {
+  if (undoStack.length === 0) return;
+  redoStack.push(makeSnapshot());
+  applySnapshot(undoStack.pop());
+  updateUndoRedoBtns();
+  scheduleAutosave();
+  toast('Undo');
+}
+
+/** Redoes the last undone operation. */
+function redo() {
+  if (redoStack.length === 0) return;
+  undoStack.push(makeSnapshot());
+  applySnapshot(redoStack.pop());
+  updateUndoRedoBtns();
+  scheduleAutosave();
+  toast('Redo');
+}
+
+/** Syncs the enabled/opacity state of the Undo and Redo header buttons. */
+function updateUndoRedoBtns() {
+  const u = document.getElementById('btn-undo');
+  const r = document.getElementById('btn-redo');
+  if (u) { u.disabled = undoStack.length === 0; u.style.opacity = undoStack.length ? '1' : '.4'; }
+  if (r) { r.disabled = redoStack.length === 0; r.style.opacity = redoStack.length ? '1' : '.4'; }
+}
+
+/* ════════════════════════════════════════════
+   BRUSH HELPERS
+════════════════════════════════════════════ */
+
+/** Sets the flood fill connectivity (4 or 8) and updates the sidebar buttons. */
+function setFillConn(n) {
+  fillConn = n;
+  document.getElementById('fill4btn').classList.toggle('active', n === 4);
+  document.getElementById('fill8btn').classList.toggle('active', n === 8);
+}
+
+/* ════════════════════════════════════════════
+   PROJECT  save / load / new
+   Projects are serialised to JSON v1 and stored either as a downloaded
+   .json file or auto-saved to localStorage (debounced, 900 ms).
+════════════════════════════════════════════ */
+
+/** Serialises the full editor state to a plain JSON-safe object. */
+function buildProjectJSON() {
+  return {
+    version: 1,
+    name: projectName,
+    gridCols: GRID_COLS, gridRows: GRID_ROWS,
+    tileW: TILE_W, tileH: TILE_H, cellPx: CELL_PX,
+    categories: JSON.parse(JSON.stringify(categories)),
+    maps: maps.map(tile => tile.map(row => row.join(''))),
+    cellColors: Object.assign({}, cellColors),
+    genPresets: deepClone(genPresets),
+  };
+}
+
+/**
+ * Applies a deserialized project object to editor state.
+ * Returns true on success, false if the object is invalid.
+ */
+function applyProjectJSON(s) {
+  if (!s || s.version !== 1) return false;
+  projectName = s.name || 'imported project';
+  GRID_COLS   = s.gridCols || 3;
+  GRID_ROWS   = s.gridRows || 3;
+  TILE_W      = s.tileW    || 18;
+  TILE_H      = s.tileH    || 18;
+  CELL_PX     = s.cellPx   || 22;
+  categories  = s.categories ? JSON.parse(JSON.stringify(s.categories)) : deepClone(DEFAULT_CATEGORIES);
+  cellColors  = s.cellColors ? Object.assign({}, s.cellColors) : {};
+  const total = GRID_COLS * GRID_ROWS;
+  maps = Array.from({length: total}, (_, i) => {
+    const saved = s.maps && s.maps[i];
+    if (saved) return saved.map(row => Array.from(row.padEnd(TILE_W, ' ')));
+    return Array.from({length: TILE_H}, () => Array(TILE_W).fill(' '));
+  });
+  activeMap = 0;
+  genPresets = Array.isArray(s.genPresets) ? deepClone(s.genPresets) : [];
+  return true;
+}
+
+/** Deep-clones any JSON-serialisable value. */
+function deepClone(obj) { return JSON.parse(JSON.stringify(obj)); }
+
+// Debounced autosave — fires 900 ms after the last change.
+// Silently fails when running from file:// (localStorage blocked by browser security).
+let _saveTimer = null;
+function scheduleAutosave() {
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(() => {
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify(buildProjectJSON()));
+      const t = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+      setAutosaveBadge(`autosaved ${t}`);
+    } catch(e) { setAutosaveBadge('autosave failed'); }
+  }, 900);
+}
+
+function setAutosaveBadge(msg) {
+  document.getElementById('autosave-badge').textContent = msg;
+}
+
+function setProjectNameUI() {
+  document.getElementById('project-name').textContent = projectName;
+}
+
+// ── New Project ──
+function newProject() {
+  document.getElementById('new-proj-name').value = '';
+  openModal('modal-new');
+}
+
+function confirmNewProject() {
+  const name = document.getElementById('new-proj-name').value.trim() || 'new-project';
+  closeModal('modal-new');
+  projectName = name;
+  categories  = deepClone(DEFAULT_CATEGORIES);
+  GRID_COLS = 3; GRID_ROWS = 3; TILE_W = 18; TILE_H = 18; CELL_PX = 22;
+  maps       = Array.from({length: 9}, () => Array.from({length: 18}, () => Array(18).fill(' ')));
+  cellColors = {};
+  activeMap  = 0;
+  clearSelection();
+  buildGrid();
+  buildPalette();
+  setProjectNameUI();
+  scheduleAutosave();
+  toast(`Project "${name}" created`);
+}
+
+// ── Save project as .json ──
+function saveProject() {
+  const slug  = projectName.replace(/[^a-z0-9_\-]/gi, '_') || 'project';
+  dlFile(slug + '.json', JSON.stringify(buildProjectJSON(), null, 2));
+  const t = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+  setAutosaveBadge(`saved ${t}`);
+  toast(`Saved ${slug}.json`);
+}
+
+// ── Open project .json ──
+function openProject() {
+  document.getElementById('open-file-input').click();
+}
+
+async function loadProjectFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  event.target.value = ''; // reset input so the same file can be re-opened
+  try {
+    const s = JSON.parse(await file.text());
+    if (!applyProjectJSON(s)) { toast('Invalid project file'); return; }
+    clearSelection();
+    buildGrid();
+    buildPalette();
+    setProjectNameUI();
+    scheduleAutosave();
+    toast(`Opened "${projectName}"`);
+  } catch(err) {
+    toast('Failed to parse project file');
+  }
+}
+
+// ── Export Maps — download each tile as an individual .txt file ──
+function exportMaps() {
+  const total = GRID_COLS * GRID_ROWS;
+  for (let i = 0; i < total; i++) {
+    const r = Math.floor(i / GRID_COLS), c = i % GRID_COLS;
+    dlFile(`map_${c}_${r}.txt`, mapToText(i));
+  }
+  toast(`Downloaded ${total} map file${total > 1 ? 's' : ''}`);
+}
+
+/* ════════════════════════════════════════════
+   INIT / BOOT
+════════════════════════════════════════════ */
+
+/** Resets maps and cellColors to empty state for current grid dimensions. */
+function initMaps() {
+  maps = Array.from({length: GRID_COLS * GRID_ROWS}, () =>
+    Array.from({length: TILE_H}, () => Array(TILE_W).fill(' ')));
+  cellColors = {};
+  activeMap  = 0;
+}
+
+/**
+ * Entry point — called once on DOMContentLoaded.
+ * Attempts to restore the last session from localStorage;
+ * falls back to a fresh default project if nothing is saved.
+ */
+function boot() {
+  let restored = false;
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) restored = applyProjectJSON(JSON.parse(raw));
+  } catch(e) { /* localStorage unavailable (e.g. file://) — start fresh */ }
+
+  if (!restored) {
+    categories = deepClone(DEFAULT_CATEGORIES);
+    initMaps();
+  }
+
+  buildGrid();
+  buildPalette();
+  setProjectNameUI();
+
+  if (restored) {
+    setAutosaveBadge('restored from autosave');
+    setTimeout(() => setAutosaveBadge(''), 3000);
+  }
+}
+
+/* ════════════════════════════════════════════
+   GRID BUILD
+   Constructs the DOM grid of cell <div>s.
+   Each cell stores its tile index (mi), row (r), and column (c)
+   as data attributes for fast event lookup.
+════════════════════════════════════════════ */
+function buildGrid() {
+  const wg = document.getElementById('world-grid');
+  wg.style.gridTemplateColumns = `repeat(${GRID_COLS}, auto)`;
+  document.documentElement.style.setProperty('--cell', CELL_PX + 'px');
+  wg.innerHTML = '';
+
+  for (let mi = 0; mi < GRID_COLS * GRID_ROWS; mi++) {
+    const tile = document.createElement('div');
+    tile.className = 'map-tile' + (mi === activeMap ? ' active-map' : '');
+    tile.dataset.mi = mi;
+    tile.style.gridTemplateColumns = `repeat(${TILE_W}, var(--cell))`;
+    tile.style.gridTemplateRows    = `repeat(${TILE_H}, var(--cell))`;
+
+    for (let r = 0; r < TILE_H; r++) {
+      for (let c = 0; c < TILE_W; c++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        cell.dataset.mi = mi; cell.dataset.r = r; cell.dataset.c = c;
+        const ch = maps[mi][r][c];
+        cell.textContent = ch === ' ' ? '' : ch;
+        applyColor(cell, ch, cellColors[`${mi},${r},${c}`] || '');
+        cell.addEventListener('mousedown', onCellDown);
+        cell.addEventListener('mouseenter', onCellEnter);
+        tile.appendChild(cell);
+      }
+    }
+    wg.appendChild(tile);
+  }
+  wg.addEventListener('mouseleave', () => { isPainting = false; });
+
+  // Clicking the canvas background (outside any tile) deselects the active map
+  const wrap = document.getElementById('canvas-wrap');
+  wrap.addEventListener('mousedown', e => {
+    if (e.target === wrap || e.target === wg) {
+      clearSelection();
+      activeMap = -1;
+      document.querySelectorAll('.map-tile').forEach(t => t.classList.remove('active-map'));
+    }
+  });
+}
+
+/* ════════════════════════════════════════════
+   COLOR HELPERS
+════════════════════════════════════════════ */
+
+/** Returns the palette color for a character, checking symbol overrides first then category color. */
+function colorForChar(ch) {
+  for (const cat of categories) {
+    const s = cat.symbols.find(s => s.char === ch);
+    if (s) return s.color || cat.color;
+  }
+  return '';
+}
+
+/** Applies color to a cell element, using per-cell override → palette color → CSS default. */
+function applyColor(cell, ch, override) {
+  cell.style.color = (override || colorForChar(ch)) || 'var(--text)';
+}
+
+/* ════════════════════════════════════════════
+   PALETTE BUILD
+   Builds the sidebar symbol palette from the categories array.
+   Symbols show a tooltip with their name on hover.
+════════════════════════════════════════════ */
+function buildPalette() {
+  const area = document.getElementById('palette-area');
+  area.innerHTML = '';
+  for (const cat of categories) {
+    if (!cat.symbols.length) continue;
+    const block = document.createElement('div');
+    block.className = 'cat-block';
+
+    const hdr = document.createElement('div');
+    hdr.className = 'cat-header';
+    const dot = document.createElement('span');
+    dot.className = 'cat-dot'; dot.style.background = cat.color;
+    const lbl = document.createElement('span');
+    lbl.className = 'cat-lbl'; lbl.textContent = cat.name;
+    hdr.append(dot, lbl);
+
+    const row = document.createElement('div');
+    row.className = 'sym-row';
+    cat.symbols.forEach(sym => row.appendChild(makeSymBtn(sym, cat)));
+
+    block.append(hdr, row);
+    area.appendChild(block);
+  }
+  updateSelIndicator();
+}
+
+/** Creates a clickable symbol button for the sidebar palette. */
+function makeSymBtn(sym, cat) {
+  const btn = document.createElement('button');
+  btn.className = 'sym-btn' + (sym.char === currentChar ? ' active' : '');
+  btn.textContent = sym.char === ' ' ? '·' : sym.char;
+  btn.style.color = sym.color || cat.color || 'var(--text)';
+  btn.onclick = () => {
+    currentChar  = sym.char;
+    currentColor = sym.color || cat.color || '';
+    refreshActiveBtns();
+  };
+  const tip = document.createElement('span');
+  tip.className = 'tip'; tip.textContent = sym.name;
+  btn.appendChild(tip);
+  return btn;
+}
+
+/** Refreshes the active highlight on all palette buttons to match currentChar. */
+function refreshActiveBtns() {
+  document.querySelectorAll('.sym-btn').forEach(btn => {
+    const ch = btn.textContent === '·' ? ' ' : btn.textContent;
+    btn.classList.toggle('active', ch === currentChar);
+  });
+  updateSelIndicator();
+}
+
+/** Updates the "active symbol" indicator in the sidebar header. */
+function updateSelIndicator() {
+  const charEl = document.getElementById('sel-char');
+  const nameEl = document.getElementById('sel-name');
+  if (!charEl) return;
+  charEl.textContent = currentChar === ' ' ? '·' : currentChar;
+  charEl.style.color = currentColor || 'var(--accent)';
+  charEl.style.borderColor = currentColor || 'var(--accent)';
+  let symName = '';
+  for (const cat of categories) {
+    const s = cat.symbols.find(s => s.char === currentChar);
+    if (s) { symName = s.name; break; }
+  }
+  nameEl.textContent = symName;
+}
+
+/* ════════════════════════════════════════════
+   CELL INTERACTIONS
+   onCellDown / onCellEnter handle all painting, erasing, filling,
+   selection dragging, and river point picking from a single event source.
+════════════════════════════════════════════ */
+function onCellDown(e) {
+  e.preventDefault();
+  const mi = parseInt(e.target.dataset.mi);
+  const r  = parseInt(e.target.dataset.r);
+  const c  = parseInt(e.target.dataset.c);
+
+  // River / stream pick mode — intercept click to set source or destination coordinate
+  if (riverPickPending) {
+    const mr = Math.floor(mi / GRID_COLS), mc = mi % GRID_COLS;
+    const wx = mc * TILE_W + c;
+    const wy = mr * TILE_H + r;
+    finishPick(wx, wy);
+    toast(`Point set: (${wx}, ${wy})`);
+    return;
+  }
+
+  if (mode === 'select') {
+    if (mi !== activeMap) selectMap(mi);
+    clearSelection();
+    isSelecting = true;
+    selStart = {r, c};
+    sel = {mi, r0:r, c0:c, r1:r, c1:c};
+    renderSelection();
+    return;
+  }
+
+  isPainting = true;
+  if (mi !== activeMap) selectMap(mi);
+  // Push undo snapshot at the start of a new paint stroke (once per mousedown, not per cell)
+  if (mode !== 'select' && !_strokeUndoPushed) { pushUndo(); _strokeUndoPushed = true; }
+  applyToCell(e.target);
+}
+
+function onCellEnter(e) {
+  const cell = e.target;
+  if (!cell.dataset.mi) return;
+  const mi = parseInt(cell.dataset.mi);
+  const r  = parseInt(cell.dataset.r);
+  const c  = parseInt(cell.dataset.c);
+  const mr = Math.floor(mi / GRID_COLS), mc = mi % GRID_COLS;
+  // Update status bar with tile, cell, and world coordinates
+  document.getElementById('coord-bar').textContent =
+    `Map[${mc},${mr}] · cell(${c},${r}) · world(${mc*TILE_W+c},${mr*TILE_H+r})`;
+  lastHover = {mi, r, c};
+
+  if (mode === 'select' && isSelecting && mi === activeMap) {
+    sel = {mi,
+      r0: Math.min(selStart.r, r), c0: Math.min(selStart.c, c),
+      r1: Math.max(selStart.r, r), c1: Math.max(selStart.c, c)};
+    renderSelection();
+    return;
+  }
+  if (isPainting) applyToCell(cell);
+}
+
+/**
+ * Applies the current brush to a cell and all cells within brushRadius.
+ * Handles paint (write currentChar), erase (write space), and fill (flood-fill).
+ * For fill mode, the undo snapshot was already pushed in onCellDown.
+ */
+function applyToCell(cell) {
+  if (!cell.dataset.mi) return;
+  const mi = parseInt(cell.dataset.mi);
+  const r  = parseInt(cell.dataset.r);
+  const c  = parseInt(cell.dataset.c);
+
+  if (mode === 'fill') {
+    floodFill(mi, r, c, maps[mi][r][c], currentChar);
+    refreshMap(mi);
+    scheduleAutosave();
+    return;
+  }
+
+  const ch  = mode === 'erase' ? ' ' : currentChar;
+  const col = mode === 'erase' ? '' : currentColor;
+  const rad = brushRadii[brushSize] || 0;
+
+  // Paint all cells within the brush radius (square brush)
+  for (let dr = -rad; dr <= rad; dr++) {
+    for (let dc = -rad; dc <= rad; dc++) {
+      const nr = r + dr, nc = c + dc;
+      if (nr < 0 || nr >= TILE_H || nc < 0 || nc >= TILE_W) continue;
+      maps[mi][nr][nc] = ch;
+      const key = `${mi},${nr},${nc}`;
+      if (col) cellColors[key] = col; else delete cellColors[key];
+      // Update the DOM cell directly for performance (avoid a full refreshMap on every move)
+      const domCell = document.querySelector(`.cell[data-mi="${mi}"][data-r="${nr}"][data-c="${nc}"]`);
+      if (domCell) { domCell.textContent = ch === ' ' ? '' : ch; applyColor(domCell, ch, col); }
+    }
+  }
+  scheduleAutosave();
+}
+
+/**
+ * Flood fill within a single tile.
+ * Supports both 4-connected (cardinal) and 8-connected (diagonal) modes,
+ * controlled by the global `fillConn` variable.
+ * Replaces all contiguous cells matching `target` with `rep`.
+ */
+function floodFill(mi, r, c, target, rep) {
+  if (target === rep) return;
+  const stack = [[r, c]], vis = new Set();
+  // 4-connected neighbours (cardinal directions)
+  const dirs4 = [[-1,0],[1,0],[0,-1],[0,1]];
+  // 8-connected adds the four diagonals
+  const dirs8 = [...dirs4, [-1,-1],[-1,1],[1,-1],[1,1]];
+  const dirs  = fillConn === 8 ? dirs8 : dirs4;
+
+  while (stack.length) {
+    const [cr, cc] = stack.pop();
+    const k = cr * TILE_W + cc;
+    if (vis.has(k)) continue;
+    if (cr < 0 || cr >= TILE_H || cc < 0 || cc >= TILE_W) continue;
+    if (maps[mi][cr][cc] !== target) continue;
+    vis.add(k);
+    maps[mi][cr][cc] = rep;
+    const ck = `${mi},${cr},${cc}`;
+    if (currentColor) cellColors[ck] = currentColor; else delete cellColors[ck];
+    for (const [dr, dc] of dirs) stack.push([cr+dr, cc+dc]);
+  }
+}
+
+/**
+ * Re-renders all cells in tile `mi` from the maps[][] data.
+ * Called after any programmatic map write (generation, paste, etc.).
+ */
+function refreshMap(mi) {
+  document.querySelectorAll(`.cell[data-mi="${mi}"]`).forEach(cell => {
+    const r = parseInt(cell.dataset.r), c = parseInt(cell.dataset.c);
+    const ch = maps[mi][r][c];
+    cell.textContent = ch === ' ' ? '' : ch;
+    applyColor(cell, ch, cellColors[`${mi},${r},${c}`] || '');
+  });
+}
+
+/** Sets the active tile and updates the active-map border highlight. */
+function selectMap(i) {
+  clearSelection();
+  activeMap = i;
+  document.querySelectorAll('.map-tile').forEach((t, idx) =>
+    t.classList.toggle('active-map', idx === i));
+}
+
+/** Switches the editor brush mode and updates toolbar button states. */
+function setMode(m) {
+  if (m !== 'select') clearSelection();
+  mode = m;
+  ['paint','erase','fill','select'].forEach(nm => {
+    const el = document.getElementById('mode' + nm.charAt(0).toUpperCase() + nm.slice(1));
+    if (el) el.classList.toggle('active', nm === m);
+  });
+  document.getElementById('world-grid').style.cursor = m === 'select' ? 'default' : 'crosshair';
+}
+
+/* ════════════════════════════════════════════
+   GRID CONFIG
+════════════════════════════════════════════ */
+function openGridConfig() {
+  document.getElementById('cfg-cols').value = GRID_COLS;
+  document.getElementById('cfg-rows').value = GRID_ROWS;
+  document.getElementById('cfg-tw').value   = TILE_W;
+  document.getElementById('cfg-th').value   = TILE_H;
+  document.getElementById('cfg-cell').value = CELL_PX;
+  openModal('modal-grid');
+}
+
+function applyGridConfig() {
+  GRID_COLS = clamp(parseInt(document.getElementById('cfg-cols').value)||3, 1, 10);
+  GRID_ROWS = clamp(parseInt(document.getElementById('cfg-rows').value)||3, 1, 10);
+  TILE_W    = clamp(parseInt(document.getElementById('cfg-tw').value)||18,  1, 64);
+  TILE_H    = clamp(parseInt(document.getElementById('cfg-th').value)||18,  1, 64);
+  CELL_PX   = clamp(parseInt(document.getElementById('cfg-cell').value)||22, 12, 40);
+  closeModal('modal-grid');
+  initMaps();
+  buildGrid();
+  scheduleAutosave();
+  toast('Grid updated');
+}
+
+/* ════════════════════════════════════════════
+   PALETTE EDITOR
+════════════════════════════════════════════ */
+function openPaletteEditor()  { renderPalEd(); updateColorClipUI(); openModal('modal-palette'); }
+function closePaletteEditor() { closeModal('modal-palette'); buildPalette(); scheduleAutosave(); }
+
+function updateColorClipUI() {
+  const swatch = document.getElementById('color-clip-swatch');
+  const val    = document.getElementById('color-clip-val');
+  if (!swatch || !val) return;
+  if (colorClip) {
+    swatch.style.background = colorClip;
+    swatch.style.borderColor = colorClip;
+    val.textContent = colorClip;
+    val.style.color = colorClip;
+  } else {
+    swatch.style.background = '#2a2f3f';
+    swatch.style.borderColor = 'var(--border2)';
+    val.textContent = 'empty';
+    val.style.color = 'var(--text3)';
+  }
+}
+
+function renderPalEd() {
+  const body = document.getElementById('palette-editor-body');
+  body.innerHTML = '';
+
+  categories.forEach((cat, ci) => {
+    const card = document.createElement('div');
+    card.className = 'cat-card';
+
+    // ── Category header ──
+    const hdr = document.createElement('div');
+    hdr.className = 'cat-card-hdr';
+
+    // Reorder category arrows
+    const catArrows = mkArrows(
+      ci > 0                      ? () => { swap(categories, ci-1, ci); renderPalEd(); } : null,
+      ci < categories.length - 1  ? () => { swap(categories, ci, ci+1); renderPalEd(); } : null,
+    );
+
+    const cCol  = mkColorInput(cat.color, v => cat.color = v);
+    const cName = mkTextInput(cat.name, 'Category name', v => cat.name = v, true);
+    const delCat = mkBtn('✕ Delete', 'red', () => { categories.splice(ci,1); renderPalEd(); });
+
+    hdr.append(catArrows, cCol, cName, delCat);
+    card.appendChild(hdr);
+
+    // ── Symbols ──
+    const symList = document.createElement('div');
+    symList.className = 'sym-edit-list';
+
+    cat.symbols.forEach((sym, si) => {
+      const row = document.createElement('div');
+      row.className = 'sym-edit-row';
+
+      const symArrows = mkArrows(
+        si > 0                      ? () => { swap(cat.symbols, si-1, si); renderPalEd(); } : null,
+        si < cat.symbols.length - 1 ? () => { swap(cat.symbols, si, si+1); renderPalEd(); } : null,
+      );
+
+      const prev = document.createElement('div');
+      prev.className = 'sym-preview';
+      prev.textContent = sym.char === ' ' ? '·' : sym.char;
+      prev.style.color = sym.color || cat.color;
+
+      const sChar = mkTextInput(sym.char, 'A', v => {
+        sym.char = v || sym.char;
+        prev.textContent = sym.char === ' ' ? '·' : sym.char;
+      }, false, '36px', 1);
+
+      const sName = mkTextInput(sym.name, 'Name', v => sym.name = v, true);
+
+      const sCol = mkColorInput(sym.color || cat.color, v => {
+        sym.color = v; prev.style.color = v;
+      }, 'Symbol color');
+
+      // Copy/paste color buttons
+      const cpyCol = mkBtn('⎘', '', () => {
+        colorClip = sym.color || cat.color;
+        cpyCol.style.borderColor = colorClip;
+        cpyCol.style.color = colorClip;
+        setTimeout(() => {
+          cpyCol.style.borderColor = '';
+          cpyCol.style.color = '';
+        }, 1200);
+        updateColorClipUI();
+        toast(`Color copied  ${colorClip}`);
+      }, '4px 6px');
+      cpyCol.title = 'Copy this color';
+      cpyCol.style.fontSize = '13px';
+
+      const pstCol = mkBtn('⧉', '', () => {
+        if (!colorClip) { toast('No color in clipboard'); return; }
+        sym.color = colorClip;
+        sCol.value = colorClip;
+        prev.style.color = colorClip;
+        toast(`Color pasted  ${colorClip} → ${sym.name}`);
+      }, '4px 6px');
+      pstCol.title = 'Paste copied color';
+      pstCol.style.fontSize = '13px';
+
+      const delSym = mkBtn('✕', 'red', () => { cat.symbols.splice(si,1); renderPalEd(); }, '4px 6px');
+
+      row.append(symArrows, prev, sChar, sName, sCol, cpyCol, pstCol, delSym);
+      symList.appendChild(row);
+    });
+
+    // ── Add symbol row ──
+    const addRow = document.createElement('div');
+    addRow.className = 'sym-edit-row';
+    addRow.style.marginTop = '3px';
+
+    const nChar = mkTextInput('', 'A', null, false, '36px', 1);
+    const nName = mkTextInput('', 'Symbol name…', null, true);
+    const nCol  = mkColorInput(cat.color, null, 'Color');
+    const addBtn = mkBtn('+ Add', 'green', () => {
+      const ch = nChar.value.trim();
+      if (!ch) return;
+      cat.symbols.push({ char: ch, name: nName.value || ch, color: nCol.value });
+      nChar.value = ''; nName.value = '';
+      renderPalEd();
+    });
+
+    addRow.append(nChar, nName, nCol, addBtn);
+    card.append(symList, addRow);
+    body.appendChild(card);
+  });
+}
+
+function addCategory() {
+  categories.push({ id: uid(), name: 'New Category', color: '#aaaaaa', symbols: [] });
+  renderPalEd();
+}
+
+// ── DOM builder helpers ──
+function swap(arr, a, b) { [arr[a], arr[b]] = [arr[b], arr[a]]; }
+
+function mkArrows(upFn, dnFn) {
+  const col = document.createElement('div');
+  col.className = 'arrow-col';
+  const u = document.createElement('button'); u.className = 'arr-btn'; u.textContent = '▲';
+  const d = document.createElement('button'); d.className = 'arr-btn'; d.textContent = '▼';
+  if (upFn) u.onclick = upFn; else u.disabled = true;
+  if (dnFn) d.onclick = dnFn; else d.disabled = true;
+  col.append(u, d);
+  return col;
+}
+
+function mkColorInput(val, onChange, title) {
+  const el = document.createElement('input');
+  el.type = 'color'; el.value = val || '#aaaaaa';
+  if (title) el.title = title;
+  if (onChange) el.oninput = e => onChange(e.target.value);
+  return el;
+}
+
+function mkTextInput(val, placeholder, onChange, flex, width, maxLen) {
+  const el = document.createElement('input');
+  el.type = 'text'; el.value = val; el.placeholder = placeholder;
+  if (flex) el.className = 'flex1';
+  if (width) el.style.width = width;
+  if (maxLen) el.maxLength = maxLen;
+  if (onChange) el.oninput = e => onChange(e.target.value);
+  return el;
+}
+
+function mkBtn(label, cls, onClick, padding) {
+  const el = document.createElement('button');
+  el.className = `sbtn ${cls||''}`.trim();
+  el.textContent = label;
+  if (padding) el.style.padding = padding;
+  if (onClick) el.onclick = onClick;
+  return el;
+}
+
+/* ════════════════════════════════════════════
+   MAP TEXT EXPORT
+════════════════════════════════════════════ */
+
+/** Returns the tile at index `mi` as a plain-text string (rows joined with newlines). */
+function mapToText(mi) {
+  return maps[mi].map(row => row.join('')).join('\n');
+}
+
+/** Copies the active tile to the system clipboard as plain text. */
+function copyActiveMap() {
+  navigator.clipboard.writeText(mapToText(activeMap)).then(() => toast('Copied!'));
+}
+
+/** Downloads the active tile as a .txt file. */
+function downloadActiveMap() {
+  const r = Math.floor(activeMap / GRID_COLS), c = activeMap % GRID_COLS;
+  dlFile(`map_${c}_${r}.txt`, mapToText(activeMap));
+  toast(`Saved map_${c}_${r}.txt`);
+}
+
+/** Downloads all tiles as individual .txt files. */
+function downloadAllMaps() {
+  const total = GRID_COLS * GRID_ROWS;
+  for (let i = 0; i < total; i++) {
+    const r = Math.floor(i / GRID_COLS), c = i % GRID_COLS;
+    dlFile(`map_${c}_${r}.txt`, mapToText(i));
+  }
+  toast(`Saved ${total} map file${total > 1 ? 's' : ''}`);
+}
+
+/**
+ * Exports the current palette as a legend .json file.
+ * The legend contains every category and symbol with its character,
+ * display name, and color — useful for reference alongside exported maps.
+ * Format:
+ *   { project, exportedAt, categories: [ { name, color, symbols: [ { char, name, color } ] } ] }
+ */
+function exportLegend() {
+  const legend = {
+    project:    projectName,
+    exportedAt: new Date().toISOString(),
+    categories: categories.map(cat => ({
+      name:    cat.name,
+      color:   cat.color,
+      symbols: cat.symbols.map(sym => ({
+        char:  sym.char,
+        name:  sym.name,
+        color: sym.color || cat.color,
+      })),
+    })),
+  };
+  const slug = projectName.replace(/[^a-z0-9_\-]/gi, '_') || 'project';
+  dlFile(`${slug}_legend.json`, JSON.stringify(legend, null, 2));
+  toast(`Saved ${slug}_legend.json`);
+}
+
+/** Clears the active tile to empty space, removing all cell color overrides. */
+function clearActiveMap() {
+  pushUndo();
+  maps[activeMap] = Array.from({length: TILE_H}, () => Array(TILE_W).fill(' '));
+  Object.keys(cellColors).forEach(k => { if (k.startsWith(activeMap + ',')) delete cellColors[k]; });
+  refreshMap(activeMap);
+  scheduleAutosave();
+  toast('Map cleared');
+}
+
+/** Clears all tiles to empty space. */
+function clearAll() {
+  pushUndo();
+  const total = GRID_COLS * GRID_ROWS;
+  maps = Array.from({length: total}, () => Array.from({length: TILE_H}, () => Array(TILE_W).fill(' ')));
+  cellColors = {};
+  for (let i = 0; i < total; i++) refreshMap(i);
+  scheduleAutosave();
+  toast('All maps cleared');
+}
+
+/* ════════════════════════════════════════════
+   SELECTION
+   Rectangular cell selection within a single tile.
+   Supports copy, cut, and paste with four placement modes.
+   Flash animations (amber = source, teal = destination) give
+   visual feedback on paste operations.
+════════════════════════════════════════════ */
+
+/** Removes the current selection highlight from all cells. */
+function clearSelection() {
+  document.querySelectorAll('.cell.selected').forEach(c => c.classList.remove('selected'));
+  sel = null; selStart = null;
+}
+
+/** Redraws the selection highlight for the current `sel` bounds. */
+function renderSelection() {
+  document.querySelectorAll(`.cell[data-mi="${activeMap}"]`).forEach(c => c.classList.remove('selected'));
+  if (!sel) return;
+  for (let r = sel.r0; r <= sel.r1; r++)
+    for (let c = sel.c0; c <= sel.c1; c++) {
+      const cell = document.querySelector(`.cell[data-mi="${activeMap}"][data-r="${r}"][data-c="${c}"]`);
+      if (cell) cell.classList.add('selected');
+    }
+}
+
+/**
+ * Briefly flashes a rectangular region with a CSS animation class.
+ * Used to highlight copy source (amber) and paste destination (teal).
+ * Class is removed automatically after the animation completes (~820 ms).
+ */
+function flashRegion(mi, r0, c0, r1, c1, cls) {
+  const cells = [];
+  for (let r = r0; r <= Math.min(r1, TILE_H - 1); r++)
+    for (let c = c0; c <= Math.min(c1, TILE_W - 1); c++) {
+      const cell = document.querySelector(`.cell[data-mi="${mi}"][data-r="${r}"][data-c="${c}"]`);
+      if (cell) { cell.classList.add(cls); cells.push(cell); }
+    }
+  setTimeout(() => cells.forEach(c => c.classList.remove(cls)), 820);
+}
+
+/**
+ * Captures a rectangular region from a tile into a clipboard object.
+ * Stores both character data and per-cell color overrides.
+ * @returns {{ rows, colors, srcMi, srcR0, srcC0 }}
+ */
+function captureRegion(mi, r0, c0, r1, c1) {
+  const rows = [], colors = [];
+  for (let r = r0; r <= r1; r++) {
+    const rc = [], cc = [];
+    for (let c = c0; c <= c1; c++) {
+      rc.push(maps[mi][r][c]);
+      cc.push(cellColors[`${mi},${r},${c}`] || '');
+    }
+    rows.push(rc); colors.push(cc);
+  }
+  return {rows, colors, srcMi: mi, srcR0: r0, srcC0: c0};
+}
+
+/** Returns clipboard contents as a plain-text string for system clipboard sync. */
+function clipText(cb) {
+  return cb.rows.map(r => r.join('')).join('\n');
+}
+
+/**
+ * Copies the current selection (or full tile if nothing is selected)
+ * to the internal clipboard and syncs to the system clipboard.
+ */
+function selectionCopy() {
+  clipboard = sel
+    ? captureRegion(sel.mi, sel.r0, sel.c0, sel.r1, sel.c1)
+    : captureRegion(activeMap, 0, 0, TILE_H - 1, TILE_W - 1);
+  navigator.clipboard.writeText(clipText(clipboard)).catch(() => {});
+  const h = clipboard.rows.length, w = clipboard.rows[0].length;
+  toast(sel ? `Copied ${h}×${w} cells` : `Copied full tile (${h}×${w})`);
+}
+
+/**
+ * Cuts the current selection (or full tile) — same as copy but also
+ * clears the source cells to empty space after capturing.
+ */
+function selectionCut() {
+  pushUndo();
+  clipboard = sel
+    ? captureRegion(sel.mi, sel.r0, sel.c0, sel.r1, sel.c1)
+    : captureRegion(activeMap, 0, 0, TILE_H - 1, TILE_W - 1);
+
+  if (sel) {
+    for (let r = sel.r0; r <= sel.r1; r++)
+      for (let c = sel.c0; c <= sel.c1; c++) {
+        maps[sel.mi][r][c] = ' ';
+        delete cellColors[`${sel.mi},${r},${c}`];
+      }
+    refreshMap(sel.mi);
+    clearSelection();
+  } else {
+    maps[activeMap] = Array.from({length: TILE_H}, () => Array(TILE_W).fill(' '));
+    Object.keys(cellColors).forEach(k => { if (k.startsWith(activeMap + ',')) delete cellColors[k]; });
+    refreshMap(activeMap);
+  }
+
+  navigator.clipboard.writeText(clipText(clipboard)).catch(() => {});
+  scheduleAutosave();
+  const h = clipboard.rows.length, w = clipboard.rows[0].length;
+  toast(sel ? `Cut ${h}×${w} cells` : `Cut full tile (${h}×${w})`);
+}
+
+/**
+ * Opens the paste modal, pre-populating it with clipboard info and
+ * the current cursor position (if available).
+ */
+function openPasteModal() {
+  if (!clipboard) { toast('Nothing in clipboard'); return; }
+  const h = clipboard.rows.length, w = clipboard.rows[0].length;
+  const srcMc = clipboard.srcMi % GRID_COLS, srcMr = Math.floor(clipboard.srcMi / GRID_COLS);
+  document.getElementById('paste-info').textContent =
+    `Clipboard: ${h}×${w} — from map[${srcMc},${srcMr}] at cell(${clipboard.srcC0},${clipboard.srcR0})`;
+
+  const lc   = lastHover;
+  const cBtn = document.getElementById('paste-cursor-btn');
+  const cLbl = document.getElementById('paste-cursor-lbl');
+  if (lc) {
+    cLbl.textContent = `cell(${lc.c},${lc.r}) on map[${lc.mi % GRID_COLS},${Math.floor(lc.mi / GRID_COLS)}]`;
+    cBtn.disabled = false; cBtn.style.opacity = '1';
+  } else {
+    cLbl.textContent = 'no cursor position';
+    cBtn.disabled = true; cBtn.style.opacity = '.4';
+  }
+
+  document.getElementById('paste-samepos-lbl').textContent =
+    `cell(${clipboard.srcC0},${clipboard.srcR0}) on active map`;
+  document.getElementById('paste-mc').value = activeMap % GRID_COLS;
+  document.getElementById('paste-mr').value = Math.floor(activeMap / GRID_COLS);
+  document.getElementById('paste-oc').value = clipboard.srcC0;
+  document.getElementById('paste-or').value = clipboard.srcR0;
+  document.getElementById('paste-mc').max   = GRID_COLS - 1;
+  document.getElementById('paste-mr').max   = GRID_ROWS - 1;
+  openModal('modal-paste');
+}
+
+/**
+ * Executes a paste operation with one of four placement modes:
+ *   'topleft'  — top-left corner of active tile
+ *   'cursor'   — at the last hovered cell
+ *   'samepos'  — same cell position as the copy source
+ *   'custom'   — user-specified tile and cell offset
+ */
+function execPaste(pmode) {
+  if (!clipboard) return;
+  pushUndo();
+  let mi, ar, ac;
+
+  if (pmode === 'topleft') {
+    mi = activeMap; ar = 0; ac = 0;
+  } else if (pmode === 'cursor') {
+    if (!lastHover) return;
+    mi = lastHover.mi; ar = lastHover.r; ac = lastHover.c;
+  } else if (pmode === 'samepos') {
+    mi = activeMap; ar = clipboard.srcR0; ac = clipboard.srcC0;
+  } else {
+    const mc = clamp(parseInt(document.getElementById('paste-mc').value) || 0, 0, GRID_COLS - 1);
+    const mr = clamp(parseInt(document.getElementById('paste-mr').value) || 0, 0, GRID_ROWS - 1);
+    mi = mr * GRID_COLS + mc;
+    ar = clamp(parseInt(document.getElementById('paste-or').value) || 0, 0, TILE_H - 1);
+    ac = clamp(parseInt(document.getElementById('paste-oc').value) || 0, 0, TILE_W - 1);
+  }
+
+  closeModal('modal-paste');
+
+  const h = clipboard.rows.length, w = clipboard.rows[0].length;
+  for (let dr = 0; dr < h; dr++)
+    for (let dc = 0; dc < w; dc++) {
+      const nr = ar + dr, nc = ac + dc;
+      if (nr >= TILE_H || nc >= TILE_W) continue;
+      maps[mi][nr][nc] = clipboard.rows[dr][dc];
+      const key = `${mi},${nr},${nc}`;
+      if (clipboard.colors[dr][dc]) cellColors[key] = clipboard.colors[dr][dc];
+      else delete cellColors[key];
+    }
+
+  selectMap(mi);
+  sel = {mi, r0: ar, c0: ac, r1: Math.min(ar + h - 1, TILE_H - 1), c1: Math.min(ac + w - 1, TILE_W - 1)};
+  setMode('select');
+  refreshMap(mi);
+  renderSelection();
+
+  // Flash source (amber) and destination (teal) regions for visual feedback
+  flashRegion(clipboard.srcMi, clipboard.srcR0, clipboard.srcC0,
+              clipboard.srcR0 + h - 1, clipboard.srcC0 + w - 1, 'flash-src');
+  flashRegion(mi, ar, ac, sel.r1, sel.c1, 'flash-dst');
+
+  scheduleAutosave();
+  toast(`Pasted ${h}×${w} → map[${mi % GRID_COLS},${Math.floor(mi / GRID_COLS)}] at (${ac},${ar})`);
+}
+
+/* ════════════════════════════════════════════
+   KEYBOARD SHORTCUTS
+════════════════════════════════════════════ */
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return; // don't intercept typing in inputs
+  if (e.key === 'Escape') {
+    // Exit screenshot mode first if active, otherwise clear selection
+    if (document.body.classList.contains('screenshot-mode')) {
+      toggleScreenshot(); return;
+    }
+    clearSelection(); return;
+  }
+  if (e.ctrlKey || e.metaKey) {
+    if (e.key === 'c') { e.preventDefault(); selectionCopy(); }
+    if (e.key === 'x') { e.preventDefault(); selectionCut();  }
+    if (e.key === 'v') { e.preventDefault(); openPasteModal(); }
+    if (e.key === 's') { e.preventDefault(); saveProject();   }
+    if (e.key === 'z') { e.preventDefault(); undo(); }
+    if (e.key === 'y') { e.preventDefault(); redo(); }
+  }
+});
+
+/* ════════════════════════════════════════════
+   SCREENSHOT MODE
+   Hides the header, sidebar, grid lines, and active-map highlight
+   so the map fills the view cleanly for screenshotting.
+   The user takes the screenshot with their own OS/browser tool.
+   Press Escape or click the exit button to restore the UI.
+════════════════════════════════════════════ */
+
+/**
+ * Toggles screenshot mode on/off.
+ * Entering: hides all UI chrome, collapses grid gaps and borders.
+ * Exiting:  restores everything instantly.
+ */
+function toggleScreenshot() {
+  document.body.classList.toggle('screenshot-mode');
+}
+
+/* ════════════════════════════════════════════
+   UTILITIES
+════════════════════════════════════════════ */
+
+/** Creates and triggers a download of a text file. */
+function dlFile(name, text) {
+  const a = document.createElement('a');
+  a.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(text);
+  a.download = name; a.click();
+}
+
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+// Close any modal by clicking outside it (on the semi-transparent backdrop)
+document.querySelectorAll('.modal-bg').forEach(bg =>
+  bg.addEventListener('mousedown', e => { if (e.target === bg) bg.classList.remove('open'); }));
+
+/** Shows a brief dismissable notification at the bottom of the screen. */
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('show'), 2400);
+}
+
+// Release paint/select drag state when mouse is released anywhere in the document
+document.addEventListener('mouseup', () => { isPainting = false; isSelecting = false; _strokeUndoPushed = false; });
+// Suppress the context menu on right-click over cells (reserved for future use)
+document.addEventListener('contextmenu', e => {
+  if (e.target.classList.contains('cell')) e.preventDefault();
+});
+
+/* ════════════════════════════════════════════
+   TERRAIN GENERATION — STATE
+   Persistent generation settings survive modal close/reopen.
+   The Water category is excluded from Weighted/Perlin generation
+   and handled exclusively by the Water tab.
+════════════════════════════════════════════ */
+
+let genMode    = 'weighted';  // current tab mode: 'weighted' | 'perlin' | 'water'
+let genTab     = 'weighted';  // which tab is active in the Generate modal
+let genFill    = 'overwrite'; // 'overwrite' | 'skip' (skip non-empty cells)
+let genTiles   = new Set();   // set of tile indices to generate (persists across opens)
+let genCats    = new Set();   // set of category ids included in generation
+
+// Per-symbol state — persists across modal opens
+// genWeightState[char] = { weight: number }   — for Weighted mode
+// genPerlinState[char] = { lo, hi, disabled } — for Perlin mode
+let genWeightState = {};
+let genPerlinState = {};
+
+// Perlin noise parameter state (persisted so sliders restore on reopen)
+let genScale     = 5;   // noise zoom — higher = larger terrain features
+let genOctaves   = 3;   // octave count — higher = more detail
+let genSeed      = 42;  // RNG seed
+let genCoherence = 0;   // smoothing passes after generation
+
+// Saved generation presets — persisted with the project
+// Each: { name, savedAt, genFill, genCats, weighted, perlin, water }
+let genPresets = [];
+
+// Depth rings for lake generation, ordered center → shore.
+// Each ring: { sym: string, width: number }
+// Width values are relative — ring.width / totalWidth gives the fraction of the radius.
+let waterRings = [
+  { sym: '≈', width: 2 }, // center (deep)
+  { sym: '~', width: 1 }, // shore  (shallow)
+];
+
+// riverPairs: Array<{ src: {wx,wy}|null, dst: {wx,wy}|null, type: 'river'|'stream' }>
+// Each pair defines one river or stream path. Generation only draws pairs
+// where both src and dst are set. wx/wy are world coordinates (cross-tile).
+let riverPairs = [];
+
+// riverPickPending: { pairIdx: number, field: 'src'|'dst' } | null
+// When set, the next map cell click will assign that world coordinate
+// to the indicated pair field, then clear this state.
+let riverPickPending = null;
+
+/**
+ * Refreshes the amber (source) and green (destination) cell highlights
+ * for all defined river pairs. Called after any pair change and on modal open.
+ * Highlights are cleared automatically after water generation runs.
+ */
+function refreshRiverHighlights() {
+  // Clear all existing highlights
+  document.querySelectorAll('.cell.river-src, .cell.river-dst').forEach(c => {
+    c.classList.remove('river-src', 'river-dst');
+  });
+  // Re-apply for all pairs with set coordinates
+  riverPairs.forEach(pair => {
+    if (pair.src) {
+      const info = worldGet(pair.src.wx, pair.src.wy);
+      if (info) {
+        const cell = document.querySelector(`.cell[data-mi="${info.mi}"][data-r="${info.r}"][data-c="${info.c}"]`);
+        if (cell) cell.classList.add('river-src');
+      }
+    }
+    if (pair.dst) {
+      const info = worldGet(pair.dst.wx, pair.dst.wy);
+      if (info) {
+        const cell = document.querySelector(`.cell[data-mi="${info.mi}"][data-r="${info.r}"][data-c="${info.c}"]`);
+        if (cell) cell.classList.add('river-dst');
+      }
+    }
+  });
+}
+
+function addRiverPair(type) {
+  riverPairs.push({ src: null, dst: null, type: type || 'river' });
+  buildRiverPairList();
+}
+
+function toggleAddDropdown(btn) {
+  const dd = document.getElementById('add-pair-dropdown');
+  dd.classList.toggle('open');
+  // Close on outside click
+  setTimeout(() => {
+    document.addEventListener('click', closeAddDropdown, { once: true });
+  }, 0);
+}
+
+function closeAddDropdown() {
+  const dd = document.getElementById('add-pair-dropdown');
+  if (dd) dd.classList.remove('open');
+}
+
+function buildRiverPairList() {
+  const el = document.getElementById('river-pair-list');
+  if (!el) return;
+  el.innerHTML = '';
+  if (riverPairs.length === 0) {
+    el.innerHTML = '<div class="muted" style="font-size:10px;padding:4px 0">No paths defined. Use + Add River or the ▾ menu for streams.</div>';
+    return;
+  }
+  riverPairs.forEach((pair, i) => {
+    const isStream = pair.type === 'stream';
+    const row = document.createElement('div');
+    row.className = 'river-pair-row';
+
+    // Type badge
+    const badge = document.createElement('span');
+    badge.style.cssText = `font-size:9px;font-weight:700;padding:1px 4px;border-radius:2px;flex-shrink:0;
+      background:${isStream ? '#102028' : '#0e2018'};
+      color:${isStream ? '#7ab8e0' : 'var(--accent)'};
+      border:1px solid ${isStream ? '#7ab8e0' : 'var(--accent)'};`;
+    badge.textContent = isStream ? 'S' : 'R';
+    badge.title = isStream ? 'Stream' : 'River';
+
+    const srcBtn = document.createElement('button');
+    srcBtn.className = 'river-coord-btn' + (pair.src ? ' set' : '');
+    srcBtn.textContent = pair.src ? `(${pair.src.wx},${pair.src.wy})` : 'Set Src';
+    if (riverPickPending?.pairIdx === i && riverPickPending?.field === 'src') srcBtn.classList.add('picking');
+    srcBtn.onclick = () => startPick(i, 'src');
+
+    const arrow = document.createElement('span');
+    arrow.className = 'river-arrow';
+    arrow.textContent = '→';
+
+    const dstBtn = document.createElement('button');
+    dstBtn.className = 'river-coord-btn' + (pair.dst ? ' set' : '');
+    dstBtn.textContent = pair.dst ? `(${pair.dst.wx},${pair.dst.wy})` : 'Set Dst';
+    if (riverPickPending?.pairIdx === i && riverPickPending?.field === 'dst') dstBtn.classList.add('picking');
+    dstBtn.onclick = () => startPick(i, 'dst');
+
+    const spacer = document.createElement('span');
+    spacer.style.flex = '1';
+
+    const del = document.createElement('button');
+    del.className = 'sbtn red';
+    del.textContent = '✕';
+    del.style.padding = '3px 6px';
+    del.onclick = () => { riverPairs.splice(i, 1); riverPickPending = null; buildRiverPairList(); refreshRiverHighlights(); };
+
+    row.append(badge, srcBtn, arrow, dstBtn, spacer, del);
+    el.appendChild(row);
+  });
+}
+
+/**
+ * Enters river coordinate pick mode for the given pair field ('src' or 'dst').
+ * The Generate modal becomes semi-transparent so the map is clickable.
+ * Calling startPick again on the same field cancels pick mode.
+ */
+function startPick(pairIdx, field) {
+  if (riverPickPending?.pairIdx === pairIdx && riverPickPending?.field === field) {
+    riverPickPending = null;
+    buildRiverPairList();
+    return;
+  }
+  riverPickPending = { pairIdx, field };
+  buildRiverPairList();
+  const modal = document.getElementById('modal-gen');
+  modal.style.pointerEvents = 'none';
+  modal.style.opacity = '0.35';
+  toast('Click a cell on the map to set the point');
+}
+
+/**
+ * Completes a river coordinate pick by storing (wx, wy) into the pending pair.
+ * Restores the modal opacity and redraws the pair list and highlights.
+ * Returns true if a pick was pending, false otherwise.
+ */
+function finishPick(wx, wy) {
+  if (!riverPickPending) return false;
+  const { pairIdx, field } = riverPickPending;
+  if (riverPairs[pairIdx]) {
+    riverPairs[pairIdx][field] = { wx, wy };
+  }
+  riverPickPending = null;
+  const modal = document.getElementById('modal-gen');
+  modal.style.pointerEvents = '';
+  modal.style.opacity = '';
+  buildRiverPairList();
+  refreshRiverHighlights();
+  return true;
+}
+
+/**
+ * Characters that identify a Water category.
+ * Any category containing one of these symbols is excluded from
+ * Weighted and Perlin terrain generation — water is handled by the Water tab only.
+ */
+const WATER_FLOW_SYMS = new Set(['~','≈','═','║','\\','/']);
+
+/** Returns true if a category contains water flow symbols (and should be excluded from terrain gen). */
+function isWaterCat(cat) {
+  return cat.symbols.some(s => WATER_FLOW_SYMS.has(s.char));
+}
+
+/**
+ * Returns categories eligible for Weighted/Perlin terrain generation.
+ * Excludes any category that contains water flow symbols.
+ */
+function genEligibleCats() {
+  return categories.filter(c => c.symbols.length > 0 && !isWaterCat(c));
+}
+
+/* ════════════════════════════════════════════
+   GENERATION PRESETS
+   Presets capture the complete state of all three generation tabs.
+   They are saved with the project .json and can also be exported/imported
+   as standalone preset .json files.
+════════════════════════════════════════════ */
+
+/**
+ * Captures the current state of all three generation tabs into a preset object.
+ * Reads live UI values for water params so sliders are always up to date.
+ */
+function capturePreset(name) {
+  return {
+    name:    name,
+    savedAt: new Date().toISOString(),
+    genFill: genFill,
+    genCats: [...genCats],
+    weighted: {
+      weights: Object.assign({}, ...Object.keys(genWeightState).map(k => ({ [k]: genWeightState[k].weight }))),
+    },
+    perlin: {
+      scale:    genScale,
+      octaves:  genOctaves,
+      seed:     genSeed,
+      coherence: genCoherence,
+      bands:    deepClone(genPerlinState),
+    },
+    water: {
+      meander:    parseInt(document.getElementById('wtr-meander')?.value)    || 4,
+      seed:       parseInt(document.getElementById('wtr-seed')?.value)       || 7,
+      symRiverH:  document.getElementById('wtr-sym-river-h')?.value         || '═',
+      symRiverV:  document.getElementById('wtr-sym-river-v')?.value         || '║',
+      symStreamA: document.getElementById('wtr-sym-stream-a')?.value        || '\\',
+      symEstuary: document.getElementById('wtr-sym-estuary')?.value         || '≈',
+      lakes:      parseInt(document.getElementById('wtr-lakes')?.value)     || 0,
+      radMin:     parseInt(document.getElementById('wtr-rad-min')?.value)   || 3,
+      radMax:     parseInt(document.getElementById('wtr-rad-max')?.value)   || 8,
+      lakeSeed:   parseInt(document.getElementById('wtr-lake-seed')?.value) || 13,
+      rings:      deepClone(waterRings),
+      riverPairs: deepClone(riverPairs),
+    },
+  };
+}
+
+/**
+ * Applies a preset object to all generation state variables and refreshes the UI.
+ * Gracefully ignores missing fields so older presets still load.
+ */
+function applyPreset(preset) {
+  if (!preset) return;
+
+  // Fill mode
+  if (preset.genFill) setGenFill(preset.genFill);
+
+  // Category selection
+  if (Array.isArray(preset.genCats)) {
+    genCats = new Set(preset.genCats.filter(id => categories.find(c => c.id === id)));
+  }
+
+  // Weighted state
+  if (preset.weighted?.weights) {
+    Object.entries(preset.weighted.weights).forEach(([ch, w]) => {
+      genWeightState[ch] = { weight: w };
+    });
+  }
+
+  // Perlin state
+  if (preset.perlin) {
+    if (preset.perlin.scale    != null) genScale     = preset.perlin.scale;
+    if (preset.perlin.octaves  != null) genOctaves   = preset.perlin.octaves;
+    if (preset.perlin.seed     != null) genSeed      = preset.perlin.seed;
+    if (preset.perlin.coherence!= null) genCoherence = preset.perlin.coherence;
+    if (preset.perlin.bands)            Object.assign(genPerlinState, deepClone(preset.perlin.bands));
+  }
+
+  // Water state
+  if (preset.water) {
+    const w = preset.water;
+    const setV = (id, val) => { const el = document.getElementById(id); if (el && val != null) el.value = val; };
+    setV('wtr-meander',    w.meander);
+    setV('wtr-seed',       w.seed);
+    setV('wtr-lakes',      w.lakes);
+    setV('wtr-rad-min',    w.radMin);
+    setV('wtr-rad-max',    w.radMax);
+    setV('wtr-lake-seed',  w.lakeSeed);
+    // Update slider value labels
+    const setLbl = (valId, val) => { const el = document.getElementById(valId); if (el && val != null) el.textContent = val; };
+    setLbl('wtr-meander-v', w.meander);
+    setLbl('wtr-lakes-v',   w.lakes);
+    if (Array.isArray(w.rings))      waterRings = deepClone(w.rings);
+    if (Array.isArray(w.riverPairs)) riverPairs = deepClone(w.riverPairs);
+    buildWaterRingList();
+    buildWaterSymSelects();
+    // Set symbol selects after buildWaterSymSelects populates them
+    if (w.symRiverH)  { const el = document.getElementById('wtr-sym-river-h');  if (el) el.value = w.symRiverH;  }
+    if (w.symRiverV)  { const el = document.getElementById('wtr-sym-river-v');  if (el) el.value = w.symRiverV;  }
+    if (w.symStreamA) { const el = document.getElementById('wtr-sym-stream-a'); if (el) el.value = w.symStreamA; }
+    if (w.symEstuary) { const el = document.getElementById('wtr-sym-estuary');  if (el) el.value = w.symEstuary; }
+    buildRiverPairList();
+  }
+
+  // Refresh all gen UI from restored state
+  document.getElementById('gen-scale').value   = genScale;
+  document.getElementById('gen-scale-val').textContent  = genScale;
+  document.getElementById('gen-octaves').value = genOctaves;
+  document.getElementById('gen-octaves-val').textContent = genOctaves;
+  document.getElementById('gen-seed').value    = genSeed;
+  document.getElementById('gen-coherence').value  = genCoherence;
+  document.getElementById('gen-coherence-val').textContent  = genCoherence;
+  document.getElementById('gen-coherence-p').value  = genCoherence;
+  document.getElementById('gen-coherence-pv').textContent   = genCoherence;
+  buildGenCatList();
+  buildGenSymList();
+}
+
+/** Saves the current generation state as a named preset. */
+function savePreset() {
+  const nameEl = document.getElementById('preset-name-input');
+  const name = nameEl?.value.trim() || `Preset ${genPresets.length + 1}`;
+  genPresets.push(capturePreset(name));
+  if (nameEl) nameEl.value = '';
+  buildPresetList();
+  scheduleAutosave();
+  toast(`Preset "${name}" saved`);
+}
+
+/** Loads a preset by index, applies it, and switches back to the last active tab. */
+function loadPreset(idx) {
+  const preset = genPresets[idx];
+  if (!preset) return;
+  applyPreset(preset);
+  scheduleAutosave();
+  toast(`Loaded "${preset.name}"`);
+}
+
+/** Deletes a preset by index. */
+function deletePreset(idx) {
+  const name = genPresets[idx]?.name || '';
+  genPresets.splice(idx, 1);
+  buildPresetList();
+  scheduleAutosave();
+  toast(`Deleted "${name}"`);
+}
+
+/** Rebuilds the preset list UI in the Presets panel. */
+function buildPresetList() {
+  const el = document.getElementById('preset-list');
+  if (!el) return;
+  el.innerHTML = '';
+  if (genPresets.length === 0) {
+    el.innerHTML = '<div class="muted" style="font-size:11px;padding:4px 0">No presets saved yet.</div>';
+    return;
+  }
+  genPresets.forEach((preset, i) => {
+    const row = document.createElement('div');
+    row.className = 'preset-row';
+
+    const name = document.createElement('span');
+    name.className = 'preset-name';
+    name.textContent = preset.name;
+
+    const date = document.createElement('span');
+    date.className = 'preset-date';
+    date.textContent = preset.savedAt
+      ? new Date(preset.savedAt).toLocaleDateString([], {month:'short', day:'numeric'})
+      : '';
+
+    const loadBtn = document.createElement('button');
+    loadBtn.className = 'sbtn green';
+    loadBtn.style.cssText = 'padding:3px 9px;font-size:11px';
+    loadBtn.textContent = '⊞ Load';
+    loadBtn.onclick = () => loadPreset(i);
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'sbtn red';
+    delBtn.style.cssText = 'padding:3px 7px;font-size:11px';
+    delBtn.textContent = '✕';
+    delBtn.onclick = () => deletePreset(i);
+
+    row.append(name, date, loadBtn, delBtn);
+    el.appendChild(row);
+  });
+}
+
+/** Exports all presets as a standalone .json file. */
+function exportPresets() {
+  if (genPresets.length === 0) { toast('No presets to export'); return; }
+  const slug = projectName.replace(/[^a-z0-9_\-]/gi, '_') || 'project';
+  dlFile(`${slug}_presets.json`, JSON.stringify({ version: 1, presets: genPresets }, null, 2));
+  toast(`Exported ${genPresets.length} preset${genPresets.length > 1 ? 's' : ''}`);
+}
+
+/** Imports presets from a .json file, merging with any existing presets. */
+async function importPresets(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  event.target.value = '';
+  try {
+    const data = JSON.parse(await file.text());
+    const incoming = Array.isArray(data.presets) ? data.presets
+                   : Array.isArray(data)          ? data
+                   : null;
+    if (!incoming || incoming.length === 0) { toast('No presets found in file'); return; }
+    genPresets.push(...incoming);
+    buildPresetList();
+    scheduleAutosave();
+    toast(`Imported ${incoming.length} preset${incoming.length > 1 ? 's' : ''}`);
+  } catch(e) {
+    toast('Failed to parse presets file');
+  }
+}
+
+function setGenTab(tab) {
+  genTab = tab;
+  genMode = tab === 'water' ? 'water' : tab;
+  ['weighted','perlin','water','presets'].forEach(t => {
+    document.getElementById(`gen-tab-${t}`).classList.toggle('active', t === tab);
+    document.getElementById(`gen-panel-${t}`).classList.toggle('active', t === tab);
+  });
+  if (tab === 'presets') buildPresetList();
+}
+
+function openGenModal() {
+  if (genTiles.size === 0) genTiles = new Set([activeMap]);
+  const total = GRID_COLS * GRID_ROWS;
+  genTiles = new Set([...genTiles].filter(i => i < total));
+
+  if (genCats.size === 0) {
+    genCats = new Set(genEligibleCats().map(c => c.id));
+  } else {
+    const validIds = new Set(genEligibleCats().map(c => c.id));
+    genCats = new Set([...genCats].filter(id => validIds.has(id)));
+  }
+
+  document.getElementById('gen-scale').value    = genScale;
+  document.getElementById('gen-scale-val').textContent = genScale;
+  document.getElementById('gen-octaves').value  = genOctaves;
+  document.getElementById('gen-octaves-val').textContent = genOctaves;
+  document.getElementById('gen-seed').value     = genSeed;
+  document.getElementById('gen-coherence').value   = genCoherence;
+  document.getElementById('gen-coherence-val').textContent  = genCoherence;
+  document.getElementById('gen-coherence-p').value  = genCoherence;
+  document.getElementById('gen-coherence-pv').textContent   = genCoherence;
+
+  buildGenTileGrid();
+  buildGenCatList();
+  buildGenSymList();
+  setGenTab(genTab);
+  setGenFill(genFill);
+  buildWaterRingList();
+  buildWaterSymSelects();
+  buildRiverPairList();
+  refreshRiverHighlights();
+  openModal('modal-gen');
+}
+
+// ── Category filter list ──
+function buildGenCatList() {
+  ['w','p'].forEach(suffix => {
+    const el = document.getElementById(`gen-cat-list-${suffix}`);
+    if (!el) return;
+    el.innerHTML = '';
+    genEligibleCats().forEach(cat => {
+      const btn = document.createElement('button');
+      btn.className = 'tile-check' + (genCats.has(cat.id) ? ' checked' : '');
+      btn.style.cssText = 'display:flex;align-items:center;gap:5px;padding:4px 10px;min-height:0';
+      const dot = document.createElement('span');
+      dot.style.cssText = `width:9px;height:9px;border-radius:50%;background:${cat.color};flex-shrink:0`;
+      const lbl = document.createElement('span');
+      lbl.style.fontSize = '11px';
+      lbl.textContent = cat.name;
+      btn.append(dot, lbl);
+      btn.onclick = () => {
+        genCats.has(cat.id) ? genCats.delete(cat.id) : genCats.add(cat.id);
+        buildGenCatList();
+        buildGenSymList();
+      };
+      el.appendChild(btn);
+    });
+  });
+}
+
+function genSelectCats(v) {
+  genCats = v ? new Set(genEligibleCats().map(c => c.id)) : new Set();
+  buildGenCatList();
+  buildGenSymList();
+}
+
+// ── Tile grid ──
+function buildGenTileGrid() {
+  const grid = document.getElementById('gen-tile-grid');
+  grid.style.gridTemplateColumns = `repeat(${GRID_COLS}, 1fr)`;
+  grid.innerHTML = '';
+  const total = GRID_COLS * GRID_ROWS;
+  for (let i = 0; i < total; i++) {
+    const r = Math.floor(i / GRID_COLS), c = i % GRID_COLS;
+    const el = document.createElement('div');
+    el.className = 'tile-check' + (genTiles.has(i) ? ' checked' : '');
+    el.textContent = `[${c},${r}]`;
+    el.onclick = () => {
+      genTiles.has(i) ? genTiles.delete(i) : genTiles.add(i);
+      el.classList.toggle('checked', genTiles.has(i));
+    };
+    grid.appendChild(el);
+  }
+}
+
+function genSelectAll(v) {
+  const total = GRID_COLS * GRID_ROWS;
+  genTiles = v ? new Set(Array.from({length: total}, (_, i) => i)) : new Set();
+  buildGenTileGrid();
+}
+
+// ── Mode / fill toggles ──
+// setGenMode is kept for backward compatibility — tab switching is handled by setGenTab.
+function setGenMode(m) { genMode = m; }
+
+function setGenFill(f) {
+  genFill = f;
+  // Update all fill button pairs
+  [['overwrite','skip'],['overwrite-p','skip-p'],['overwrite-w','skip-w']].forEach(([ov, sk]) => {
+    const oel = document.getElementById(`gen-fill-${ov}`);
+    const sel = document.getElementById(`gen-fill-${sk}`);
+    if (oel) oel.classList.toggle('active', f === 'overwrite');
+    if (sel) sel.classList.toggle('active', f === 'skip');
+  });
+}
+
+function buildGenSymList() {
+  const allSyms = genEligibleCats()
+    .filter(cat => genCats.has(cat.id))
+    .flatMap(cat => cat.symbols.map(sym => ({sym, cat})));
+
+  // Weighted list
+  const listW = document.getElementById('gen-sym-list-w');
+  if (listW) {
+    listW.innerHTML = '';
+    if (allSyms.length === 0) {
+      listW.innerHTML = '<div class="muted" style="padding:8px 0">No categories selected.</div>';
+    } else {
+      const n = allSyms.length;
+      allSyms.forEach(({sym}) => {
+        if (genWeightState[sym.char] === undefined)
+          genWeightState[sym.char] = { weight: Math.round(100 / n) };
+      });
+      buildWeightedList(listW, allSyms);
+    }
+  }
+
+  // Perlin list
+  const listP = document.getElementById('gen-sym-list-p');
+  if (listP) {
+    listP.innerHTML = '';
+    if (allSyms.length === 0) {
+      listP.innerHTML = '<div class="muted" style="padding:8px 0">No categories selected.</div>';
+    } else {
+      const n = allSyms.length;
+      allSyms.forEach(({sym}, idx) => {
+        if (!genPerlinState[sym.char]) {
+          genPerlinState[sym.char] = {
+            lo: Math.round((idx / n) * 100),
+            hi: Math.round(((idx + 1) / n) * 100),
+            disabled: false
+          };
+        }
+      });
+      buildPerlinList(listP, allSyms);
+    }
+  }
+}
+
+// ── Weighted list ──
+function buildWeightedList(list, allSyms) {
+  // Total bar
+  const totalRow = document.createElement('div');
+  totalRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:11px;color:var(--text3)';
+  const totalLbl = document.createElement('span');
+  totalLbl.id = 'gen-weight-total';
+  totalLbl.style.cssText = 'font-family:var(--mono);color:var(--accent2)';
+  totalRow.innerHTML = 'Total: ';
+  totalRow.appendChild(totalLbl);
+  list.appendChild(totalRow);
+
+  allSyms.forEach(({sym, cat}) => {
+    const row = document.createElement('div');
+    row.className = 'gen-sym-row';
+
+    const ch = document.createElement('div');
+    ch.className = 'gen-sym-char';
+    ch.textContent = sym.char === ' ' ? '·' : sym.char;
+    ch.style.color = sym.color || cat.color;
+
+    const nm = document.createElement('div');
+    nm.className = 'gen-sym-name';
+    nm.textContent = sym.name;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'gen-weight-wrap';
+
+    const inp = document.createElement('input');
+    inp.type = 'number'; inp.min = 0; inp.max = 100;
+    inp.value = genWeightState[sym.char]?.weight ?? 0;
+    inp.oninput = () => {
+      genWeightState[sym.char].weight = clamp(parseFloat(inp.value) || 0, 0, 100);
+      updateWeightBars(allSyms);
+    };
+
+    const barWrap = document.createElement('div');
+    barWrap.className = 'gen-weight-bar';
+    const fill = document.createElement('div');
+    fill.className = 'gen-weight-fill';
+    fill.dataset.char = sym.char;
+    fill.style.background = sym.color || cat.color;
+    barWrap.appendChild(fill);
+
+    wrap.append(inp, barWrap);
+    row.append(ch, nm, wrap);
+    list.appendChild(row);
+  });
+
+  updateWeightBars(allSyms);
+}
+
+function updateWeightBars(allSyms) {
+  const total = allSyms.reduce((s, {sym}) => s + (genWeightState[sym.char]?.weight || 0), 0);
+  const lbl = document.getElementById('gen-weight-total');
+  if (lbl) {
+    lbl.textContent = total.toFixed(1) + '%';
+    lbl.style.color = Math.abs(total - 100) < 0.5 ? 'var(--accent)' : 'var(--accent2)';
+  }
+  allSyms.forEach(({sym}) => {
+    const fill = document.querySelector(`.gen-weight-fill[data-char="${CSS.escape(sym.char)}"]`);
+    if (fill && total > 0)
+      fill.style.width = ((genWeightState[sym.char]?.weight || 0) / total * 100) + '%';
+  });
+}
+
+// ── Perlin dual-range list ──
+function buildPerlinList(list, allSyms) {
+  allSyms.forEach(({sym, cat}) => {
+    const state = genPerlinState[sym.char];
+    // Init disabled flag if not set
+    if (state.disabled === undefined) state.disabled = false;
+
+    const row = document.createElement('div');
+    row.className = 'gen-sym-row';
+    row.style.opacity = state.disabled ? '0.35' : '1';
+    row.style.transition = 'opacity .15s';
+
+    const ch = document.createElement('div');
+    ch.className = 'gen-sym-char';
+    ch.textContent = sym.char === ' ' ? '·' : sym.char;
+    ch.style.color = sym.color || cat.color;
+
+    const nm = document.createElement('div');
+    nm.className = 'gen-sym-name';
+    nm.textContent = sym.name;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'dual-range-wrap';
+    wrap.style.pointerEvents = state.disabled ? 'none' : '';
+
+    const track = document.createElement('div');
+    track.className = 'dual-range-track';
+
+    const fill = document.createElement('div');
+    fill.className = 'dual-range-fill';
+    fill.style.background = sym.color || cat.color;
+    fill.style.opacity = '0.55';
+
+    const loIn = document.createElement('input');
+    loIn.type = 'range'; loIn.min = 0; loIn.max = 100; loIn.value = state.lo;
+    const hiIn = document.createElement('input');
+    hiIn.type = 'range'; hiIn.min = 0; hiIn.max = 100; hiIn.value = state.hi;
+
+    const valLbl = document.createElement('div');
+    valLbl.className = 'dual-range-val';
+    valLbl.style.color = state.disabled ? 'var(--text3)' : '';
+
+    function updateDual() {
+      let lo = parseInt(loIn.value), hi = parseInt(hiIn.value);
+      if (lo > hi) { if (document.activeElement === loIn) hi = lo; else lo = hi; }
+      loIn.value = lo; hiIn.value = hi;
+      state.lo = lo; state.hi = hi;
+      fill.style.left  = lo + '%';
+      fill.style.width = (hi - lo) + '%';
+      valLbl.textContent = lo + '–' + hi;
+    }
+
+    loIn.oninput = hiIn.oninput = updateDual;
+    updateDual();
+
+    // ── Disable checkbox ──
+    const cbWrap = document.createElement('label');
+    cbWrap.title = 'Enable / disable this symbol';
+    cbWrap.style.cssText = 'display:flex;align-items:center;gap:4px;cursor:pointer;flex-shrink:0;margin-left:4px';
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = !state.disabled;
+    cb.style.cssText = 'width:13px;height:13px;accent-color:var(--accent);cursor:pointer';
+    cb.onchange = () => {
+      state.disabled = !cb.checked;
+      row.style.opacity      = state.disabled ? '0.35' : '1';
+      wrap.style.pointerEvents = state.disabled ? 'none'  : '';
+      valLbl.style.color     = state.disabled ? 'var(--text3)' : '';
+    };
+
+    cbWrap.appendChild(cb);
+    wrap.append(track, fill, loIn, hiIn);
+    row.append(ch, nm, wrap, valLbl, cbWrap);
+    list.appendChild(row);
+  });
+}
+
+/* ════════════════════════════════════════════
+   PERLIN NOISE
+   Self-contained seeded Perlin noise implementation.
+   Used for terrain generation (Perlin tab) and river meander.
+════════════════════════════════════════════ */
+
+/**
+ * Creates a seeded 2D Perlin noise function.
+ * Returns a function noise(x, y) → [0, 1].
+ * Uses a seeded LCG to shuffle the permutation table so results
+ * are deterministic for a given seed.
+ */
+function makePerlin(seed) {
+  // Seeded LCG + simple gradient noise
+  let s = seed | 0;
+  function rand() { s = (s * 1664525 + 1013904223) & 0xffffffff; return (s >>> 0) / 0xffffffff; }
+  const P = new Uint8Array(512);
+  const base = new Uint8Array(256);
+  for (let i = 0; i < 256; i++) base[i] = i;
+  for (let i = 255; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [base[i], base[j]] = [base[j], base[i]]; }
+  for (let i = 0; i < 512; i++) P[i] = base[i & 255];
+
+  function fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+  function lerp(a, b, t) { return a + t * (b - a); }
+  function grad(h, x, y) {
+    const v = h & 3;
+    return (v === 0 ? x+y : v === 1 ? -x+y : v === 2 ? x-y : -x-y);
+  }
+
+  return function noise(x, y) {
+    const X = Math.floor(x) & 255, Y = Math.floor(y) & 255;
+    x -= Math.floor(x); y -= Math.floor(y);
+    const u = fade(x), v = fade(y);
+    const a = P[X]+Y, b = P[X+1]+Y;
+    return (lerp(
+      lerp(grad(P[a],   x,   y), grad(P[b],   x-1, y),   u),
+      lerp(grad(P[a+1], x,   y-1), grad(P[b+1], x-1, y-1), u),
+      v
+    ) + 1) / 2;  // normalize to 0-1
+  };
+}
+
+/**
+ * Combines multiple octaves of Perlin noise for more natural-looking terrain.
+ * persistence controls how quickly amplitude decreases per octave (0–1).
+ */
+function octaveNoise(noiseFn, x, y, octaves, persistence) {
+  let val = 0, amp = 1, freq = 1, max = 0;
+  for (let i = 0; i < octaves; i++) {
+    val += noiseFn(x * freq, y * freq) * amp;
+    max += amp; amp *= persistence; freq *= 2;
+  }
+  return val / max;
+}
+
+/* ════════════════════════════════════════════
+   SMOOTHING (coherence)
+════════════════════════════════════════════ */
+
+/**
+ * Applies cellular-automata majority-rule smoothing to a tile.
+ * Each cell is replaced by its most common neighbor if that neighbor
+ * appears in 5 or more of the 8 surrounding cells.
+ * `passes` controls how many rounds of smoothing to apply.
+ */
+function smoothMap(mi, passes) {
+  for (let p = 0; p < passes; p++) {
+    const next = maps[mi].map(r => [...r]);
+    for (let r = 0; r < TILE_H; r++) {
+      for (let c = 0; c < TILE_W; c++) {
+        // Count neighbors
+        const counts = {};
+        for (let dr = -1; dr <= 1; dr++)
+          for (let dc = -1; dc <= 1; dc++) {
+            if (dr === 0 && dc === 0) continue;
+            const nr = r+dr, nc = c+dc;
+            if (nr >= 0 && nr < TILE_H && nc >= 0 && nc < TILE_W) {
+              const ch = maps[mi][nr][nc];
+              counts[ch] = (counts[ch] || 0) + 1;
+            }
+          }
+        // Replace with majority neighbor if it differs
+        const best = Object.entries(counts).sort((a,b) => b[1]-a[1])[0];
+        if (best && best[1] >= 5) next[r][c] = best[0];
+      }
+    }
+    maps[mi] = next;
+  }
+}
+
+/* ════════════════════════════════════════════
+/* ════════════════════════════════════════════
+   WATER GENERATION — LAKE PLACEMENT TRACKING
+   _lakePlaced tracks cells written during the lake pass so rivers/streams
+   know when they've reached a body of water and should stop.
+════════════════════════════════════════════ */
+
+// Set of "wx,wy" keys for cells placed by the lake generator this run.
+// Rivers stop here; they do NOT stop at each other's cells.
+const _lakePlaced = new Set();
+
+function isLakePlaced(wx, wy) {
+  return _lakePlaced.has(`${wx},${wy}`);
+}
+
+/** Marks a world cell as having been placed by the lake generator this run. */
+function markLakePlaced(wx, wy) {
+  _lakePlaced.add(`${wx},${wy}`);
+}
+
+function buildWaterRingList() {
+  const el = document.getElementById('water-ring-list');
+  if (!el) return;
+  el.innerHTML = '';
+  waterRings.forEach((ring, i) => {
+    const row = document.createElement('div');
+    row.className = 'water-ring-row';
+
+    const lbl = document.createElement('span');
+    lbl.style.cssText = 'font-size:11px;color:var(--text3);width:60px;flex-shrink:0';
+    lbl.textContent = i === 0 ? 'Center' : i === waterRings.length - 1 ? 'Shore' : `Ring ${i+1}`;
+
+    const symIn = document.createElement('input');
+    symIn.type = 'text'; symIn.maxLength = 1;
+    symIn.className = 'water-sym-pick';
+    symIn.value = ring.sym;
+    symIn.oninput = e => { ring.sym = e.target.value || ring.sym; };
+
+    const wLbl = document.createElement('span');
+    wLbl.style.cssText = 'font-size:11px;color:var(--text2);margin-left:6px';
+    wLbl.textContent = 'Width';
+
+    const wIn = document.createElement('input');
+    wIn.type = 'number'; wIn.min = 1; wIn.max = 20; wIn.value = ring.width;
+    wIn.style.width = '52px';
+    wIn.oninput = e => { ring.width = Math.max(1, parseInt(e.target.value) || 1); };
+
+    const spacer = document.createElement('span');
+    spacer.style.flex = '1';
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'sbtn red';
+    delBtn.textContent = '✕';
+    delBtn.style.padding = '3px 7px';
+    delBtn.disabled = waterRings.length <= 1;
+    delBtn.onclick = () => { waterRings.splice(i, 1); buildWaterRingList(); };
+
+    row.append(lbl, symIn, wLbl, wIn, spacer, delBtn);
+    el.appendChild(row);
+  });
+}
+
+function addWaterRing() {
+  waterRings.push({ sym: '~', width: 1 });
+  buildWaterRingList();
+}
+
+// ── Populate palette-driven selects ──
+function buildWaterSymSelects() {
+  const allSyms = categories.flatMap(cat => cat.symbols.filter(s => s.char !== ' '));
+  const selIds  = ['wtr-sym-stream-a','wtr-sym-river-h','wtr-sym-river-v','wtr-sym-estuary'];
+  const defaults = ['\\', '═', '║', '≈'];
+  selIds.forEach((id, i) => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    const prev = sel.value;
+    sel.innerHTML = '';
+    allSyms.forEach(sym => {
+      const opt = document.createElement('option');
+      opt.value = sym.char;
+      opt.textContent = `${sym.char === ' ' ? '·' : sym.char}  ${sym.name}`;
+      sel.appendChild(opt);
+    });
+    // Restore previous or default
+    sel.value = prev || defaults[i];
+    if (!sel.value && sel.options.length) sel.selectedIndex = 0;
+  });
+}
+
+/* ════════════════════════════════════════════
+   RIVER / STREAM GENERATION
+   Each river or stream is an explicit source→destination pair stored in
+   riverPairs[]. Generation runs in two ordered passes:
+     ① Bodies of Water (lakes, Poisson-disk spaced)
+     ② Rivers & Streams (noise-guided with destination pull)
+════════════════════════════════════════════ */
+function runWaterGen() {
+  pushUndo();
+  // Read UI parameters
+  const meander    = parseInt(document.getElementById('wtr-meander').value)      || 4;
+  const riverSeed  = parseInt(document.getElementById('wtr-seed').value)         || 7;
+  const lakes      = parseInt(document.getElementById('wtr-lakes').value)        || 0;
+  const radMin     = parseInt(document.getElementById('wtr-rad-min').value)      || 3;
+  const radMax     = parseInt(document.getElementById('wtr-rad-max').value)      || 8;
+  const lakeSeed   = parseInt(document.getElementById('wtr-lake-seed').value)    || 13;
+
+  // Channel symbols — sourced from the palette via the Water tab selects
+  const symRiverH  = document.getElementById('wtr-sym-river-h')?.value  || '═';
+  const symRiverV  = document.getElementById('wtr-sym-river-v')?.value  || '║';
+
+  // Clear the per-run lake tracker
+  _lakePlaced.clear();
+
+  const worldW = GRID_COLS * TILE_W;
+  const worldH = GRID_ROWS * TILE_H;
+
+  let rs = riverSeed | 0;
+  function rng() { rs = (rs * 1664525 + 1013904223) & 0xffffffff; return (rs >>> 0) / 0xffffffff; }
+
+  // Two noise layers at meaningful scale for tile size
+  const mNoise  = makePerlin(riverSeed + 1);
+  const mNoise2 = makePerlin(riverSeed + 7);
+  const NS = 0.12; // scale: produces ~2 full cycles across a 18-cell tile
+
+  // ── Draw rivers and streams from source→destination pairs ──
+  const validPairs = riverPairs.filter(p => p.src && p.dst);
+
+  validPairs.forEach(pair => {
+    const sx = pair.src.wx, sy = pair.src.wy;
+    const ex = pair.dst.wx, ey = pair.dst.wy;
+    const isStream = pair.type === 'stream';
+    let wx = sx, wy = sy;
+    let sDx = 0.0, sDy = 1.0;
+    let horizRun = 0;
+    const maxLen = (worldW + worldH) * 2;
+    const destPull = 0.35;
+    // Recent-position memory: keeps the last 4 visited cells to prevent
+    // the wanderer from immediately doubling back into its own trail.
+    const recentSteps = [];
+    const MEMORY = 4;
+
+    for (let step = 0; step < maxLen; step++) {
+      if (wx < 0 || wx >= worldW || wy < 0 || wy >= worldH) break;
+      const info = worldGet(wx, wy);
+      if (!info) break;
+      if (isLakePlaced(wx, wy)) break;
+
+      // Symbol: streams use diagonal \ /, rivers use ═ ║
+      let sym;
+      if (isStream) {
+        sym = sDx >= 0 ? '\\' : '/';
+      } else {
+        const isH = Math.abs(sDx) > Math.abs(sDy) * 0.6;
+        sym = isH ? symRiverH : symRiverV;
+      }
+      worldSetForce(wx, wy, sym);
+
+      // Record this position in the short-term memory
+      recentSteps.push(`${wx},${wy}`);
+      if (recentSteps.length > MEMORY) recentSteps.shift();
+
+      // Stop after drawing the destination cell.
+      // Streams use a 1-cell tolerance since diagonal steps can skip the exact coord.
+      if (isStream ? (Math.abs(wx - ex) <= 1 && Math.abs(wy - ey) <= 1) : (wx === ex && wy === ey)) break;
+
+      // Vector toward destination
+      const toDx = ex - wx, toDy = ey - wy;
+      const toDist = Math.sqrt(toDx * toDx + toDy * toDy);
+      const normToDx = toDist > 0 ? toDx / toDist : 0;
+      const normToDy = toDist > 0 ? toDy / toDist : 0;
+
+      const pullStrength = Math.min(0.9, destPull + (1 - Math.min(toDist, 20) / 20) * 0.5);
+      const hNoise = mNoise(wx * NS, wy * NS) * 2 - 1;
+      const vNoise = mNoise2(wx * NS, wy * NS);
+      const blendedDx = hNoise * (meander / 10) * (1 - pullStrength) + normToDx * pullStrength;
+      const blendedDy = (vNoise * 0.3 + 0.4) * (1 - pullStrength) + normToDy * pullStrength;
+
+      // Candidate step directions (primary + fallback) in preference order
+      let ddx = 0, ddy = 0;
+      if (isStream) {
+        ddx = blendedDx >= 0 ? 1 : -1;
+        ddy = normToDy >= 0 ? 1 : -1;
+      } else if (horizRun >= 4) {
+        ddy = normToDy >= 0 ? 1 : -1; horizRun = 0;
+      } else if (Math.abs(blendedDx) > Math.abs(blendedDy) * 0.8) {
+        ddx = blendedDx > 0 ? 1 : -1; ddy = 0; horizRun++;
+      } else {
+        ddy = blendedDy >= 0 ? 1 : -1;
+        if (Math.abs(blendedDx) > 0.25) ddx = blendedDx > 0 ? 1 : -1;
+        horizRun = 0;
+      }
+
+      // Backtrack prevention: if the chosen step leads to a recently visited cell,
+      // try an alternative direction that makes progress toward the destination instead.
+      const nwx = clamp(wx + ddx, 0, worldW - 1);
+      const nwy = clamp(wy + ddy, 0, worldH - 1);
+      if (recentSteps.includes(`${nwx},${nwy}`)) {
+        // Try the axis-aligned step toward destination as a fallback
+        const altDdx = Math.abs(normToDx) >= Math.abs(normToDy) ? (normToDx >= 0 ? 1 : -1) : 0;
+        const altDdy = Math.abs(normToDy) >  Math.abs(normToDx) ? (normToDy >= 0 ? 1 : -1) : 0;
+        const anwx = clamp(wx + altDdx, 0, worldW - 1);
+        const anwy = clamp(wy + altDdy, 0, worldH - 1);
+        if (!recentSteps.includes(`${anwx},${anwy}`)) {
+          ddx = altDdx; ddy = altDdy;
+        }
+        // If both are in recent history, accept the original to avoid infinite loops
+      }
+
+      sDx = sDx * 0.6 + ddx * 0.4;
+      sDy = sDy * 0.6 + ddy * 0.4;
+      wx = clamp(wx + ddx, 0, worldW - 1);
+      wy = clamp(wy + ddy, 0, worldH - 1);
+    }
+  });
+
+  // ── Draw lakes (Poisson disk sampling for even distribution) ──
+  let ls = lakeSeed | 0;
+  function lrng() { ls = (ls * 1664525 + 1013904223) & 0xffffffff; return (ls >>> 0) / 0xffffffff; }
+  const lakeNoise = makePerlin(lakeSeed + 3);
+  const totalRingWidth = waterRings.reduce((s, r) => s + r.width, 0);
+
+  if (lakes > 0 && totalRingWidth > 0) {
+    // Poisson disk: minimum separation = radMax * 2 + 2 (edges never touch)
+    const minDist = radMax * 2 + 2;
+    const placed  = []; // [{cx, cy, rad}]
+    const maxAttempts = 30; // candidates per lake before giving up
+
+    for (let k = 0; k < lakes; k++) {
+      let cx, cy, rad, attempts = 0, valid = false;
+      while (attempts < maxAttempts) {
+        attempts++;
+        cx  = Math.floor(lrng() * worldW);
+        cy  = Math.floor(lrng() * worldH);
+        rad = radMin + Math.floor(lrng() * Math.max(1, radMax - radMin + 1));
+        // Check minimum distance from all previously placed lakes
+        valid = placed.every(p => {
+          const dx = cx - p.cx, dy = cy - p.cy;
+          return Math.sqrt(dx * dx + dy * dy) >= minDist;
+        });
+        if (valid) break;
+      }
+      if (!valid) continue; // skip if no valid position found after maxAttempts
+      placed.push({ cx, cy, rad });
+
+      for (let dy = -rad; dy <= rad; dy++) {
+        for (let dx2 = -rad; dx2 <= rad; dx2++) {
+          const wx2 = cx + dx2, wy2 = cy + dy;
+          const info = worldGet(wx2, wy2);
+          if (!info) continue;
+          if (!genTiles.has(info.mi)) continue;
+          if (genFill === 'skip' && ['~','≈','═','║','\\','/'].includes(info.ch)) continue;
+
+          const wobble  = lakeNoise(wx2 * 0.12, wy2 * 0.12) * 0.4 + 0.8;
+          const dist    = Math.sqrt(dx2 * dx2 + dy * dy) / wobble;
+          if (dist > rad) continue;
+
+          const normDist = dist / rad;
+          let sym = waterRings[waterRings.length - 1]?.sym || '~';
+          let cumW = 0;
+          for (const ring of waterRings) {
+            cumW += ring.width / totalRingWidth;
+            if (normDist <= cumW) { sym = ring.sym; break; }
+          }
+          worldSet(wx2, wy2, sym);
+          markLakePlaced(wx2, wy2);
+        }
+      }
+    }
+  }
+
+  // Refresh all tiles — rivers may have drawn outside genTiles boundaries
+  const totalTiles = GRID_COLS * GRID_ROWS;
+  for (let i = 0; i < totalTiles; i++) refreshMap(i);
+  // Clear source/destination highlights — generation is complete
+  document.querySelectorAll('.cell.river-src, .cell.river-dst')
+    .forEach(c => c.classList.remove('river-src', 'river-dst'));
+  scheduleAutosave();
+  toast(`Water generated on ${genTiles.size} tile${genTiles.size > 1 ? 's' : ''}`);
+}
+
+/* ════════════════════════════════════════════
+   WORLD COORDINATE ACCESSORS
+   World coordinates (wx, wy) span the full multi-tile grid:
+     wx = tileCol * TILE_W + cellCol
+     wy = tileRow * TILE_H + cellRow
+   These helpers translate between world space and tile+cell indices.
+════════════════════════════════════════════ */
+
+/**
+ * Returns { mi, r, c, ch } for a world coordinate, or null if out of bounds.
+ * Used by river/lake generation to read/write across tile boundaries.
+ */
+function worldGet(wx, wy) {
+  const tileC = Math.floor(wx / TILE_W);
+  const tileR = Math.floor(wy / TILE_H);
+  if (tileC < 0 || tileC >= GRID_COLS || tileR < 0 || tileR >= GRID_ROWS) return null;
+  const mi = tileR * GRID_COLS + tileC;
+  return { mi, r: wy - tileR * TILE_H, c: wx - tileC * TILE_W, ch: maps[mi][wy - tileR * TILE_H][wx - tileC * TILE_W] };
+}
+
+/**
+ * Writes a character to a world coordinate.
+ * Only writes to tiles currently in genTiles (respects tile selection).
+ * For terrain generation — use worldSetForce for rivers/streams.
+ */
+function worldSet(wx, wy, ch) {
+  const info = worldGet(wx, wy);
+  if (!info) return;
+  if (!genTiles.has(info.mi)) return;
+  maps[info.mi][info.r][info.c] = ch;
+  delete cellColors[`${info.mi},${info.r},${info.c}`];
+}
+
+/**
+ * Writes a character to a world coordinate unconditionally (ignores genTiles).
+ * Used for rivers and streams which must cross tile boundaries freely.
+ */
+function worldSetForce(wx, wy, ch) {
+  const info = worldGet(wx, wy);
+  if (!info) return;
+  maps[info.mi][info.r][info.c] = ch;
+  delete cellColors[`${info.mi},${info.r},${info.c}`];
+}
+
+/* ════════════════════════════════════════════
+   RESET & RANDOMISE
+   These operate on the currently visible symbol list (filtered by
+   checked categories) so they respect the user's category selection.
+════════════════════════════════════════════ */
+
+/** Returns all symbols from checked categories, excluding the Water category. */
+function getActiveSyms() {
+  return genEligibleCats()
+    .filter(cat => genCats.has(cat.id))
+    .flatMap(cat => cat.symbols.map(sym => ({sym, cat})));
+}
+
+/**
+ * Resets all symbol weights and Perlin bands to even defaults.
+ * Weighted mode: each symbol gets 100/n weight.
+ * Perlin mode: 0–100 range divided into equal segments, one per symbol.
+ */
+function resetGenSymbols() {
+  const syms = getActiveSyms();
+  if (syms.length === 0) return;
+  const n = syms.length;
+  const even = Math.round(100 / n);
+  syms.forEach(({sym}, i) => {
+    genWeightState[sym.char] = { weight: even };
+    genPerlinState[sym.char] = {
+      lo: Math.round((i / n) * 100),
+      hi: Math.round(((i + 1) / n) * 100),
+      disabled: false
+    };
+  });
+  buildGenSymList();
+  toast('Reset to defaults');
+}
+
+/**
+ * Assigns random non-overlapping noise bands to all active symbols.
+ * Generates n-1 random cut points across 0–100, sorts them, and uses
+ * the gaps as bands. Preserves each symbol's disabled state.
+ */
+function randomNoiseBands() {
+  const syms = getActiveSyms();
+  if (syms.length === 0) return;
+  const n = syms.length;
+  const cuts = Array.from({length: n - 1}, () => Math.floor(Math.random() * 99) + 1).sort((a, b) => a - b);
+  const points = [0, ...cuts, 100];
+  syms.forEach(({sym}, i) => {
+    genPerlinState[sym.char] = {
+      lo: points[i],
+      hi: points[i + 1],
+      disabled: genPerlinState[sym.char]?.disabled ?? false
+    };
+  });
+  buildGenSymList();
+  toast('Random bands applied');
+}
+
+/* ════════════════════════════════════════════
+   RUN GENERATION
+   Dispatches to the correct generator based on the active tab.
+   Water tab: runs runWaterGen() (lakes then rivers/streams).
+   Weighted tab: samples from a cumulative probability distribution.
+   Perlin tab: maps octave noise values to symbol bands.
+   Both terrain modes respect genFill (overwrite vs skip non-empty).
+════════════════════════════════════════════ */
+function runGeneration() {
+  if (genTiles.size === 0) { toast('No tiles selected'); return; }
+
+  // Water tab has its own generator — dispatch and exit
+  if (genTab === 'water') { runWaterGen(); closeModal('modal-gen'); return; }
+
+  const coherence = genCoherence;
+  // Collect all symbols from checked categories (water excluded)
+  const allSyms = genEligibleCats()
+    .filter(cat => genCats.has(cat.id))
+    .flatMap(cat => cat.symbols.map(sym => ({sym, cat})));
+
+  if (allSyms.length === 0) { toast('No categories selected'); return; }
+
+  // Snapshot before any cells are overwritten
+  pushUndo();
+
+  if (genTab === 'weighted') {
+    // ── Weighted Random ──
+    // Build a cumulative distribution function (CDF) so a single random [0,1]
+    // sample picks a symbol proportional to its weight.
+    const total = allSyms.reduce((s, {sym}) => s + (genWeightState[sym.char]?.weight || 0), 0);
+    if (total <= 0) { toast('All weights are zero'); return; }
+
+    const cdf = [];
+    let cum = 0;
+    allSyms.forEach(({sym}) => {
+      cum += (genWeightState[sym.char]?.weight || 0) / total;
+      cdf.push({ char: sym.char, cum });
+    });
+
+    genTiles.forEach(mi => {
+      for (let r = 0; r < TILE_H; r++)
+        for (let c = 0; c < TILE_W; c++) {
+          if (genFill === 'skip' && maps[mi][r][c] !== ' ') continue;
+          const rnd = Math.random();
+          // cdf.find returns the first bucket whose cumulative value exceeds rnd
+          const chosen = cdf.find(e => rnd <= e.cum) || cdf[cdf.length - 1];
+          maps[mi][r][c] = chosen.char;
+          delete cellColors[`${mi},${r},${c}`];
+        }
+      if (coherence > 0) smoothMap(mi, coherence);
+      refreshMap(mi);
+    });
+
+  } else {
+    // ── Perlin Noise ──
+    // Noise value (0–100) is compared against each symbol's [lo, hi] band.
+    // If no band matches and Empty is not selected, snaps to the nearest band
+    // so cells are never left blank unintentionally.
+    const noiseFn = makePerlin(genSeed);
+
+    // Sorted band list — disabled symbols are excluded
+    const bands = allSyms
+      .map(({sym}) => ({
+        char: sym.char,
+        lo: genPerlinState[sym.char]?.lo ?? 0,
+        hi: genPerlinState[sym.char]?.hi ?? 0,
+        disabled: genPerlinState[sym.char]?.disabled ?? false
+      }))
+      .filter(b => b.hi > b.lo && !b.disabled)
+      .sort((a, b) => a.lo - b.lo);
+
+    if (bands.length === 0) { toast('No noise bands defined'); return; }
+
+    // World-space sampling ensures seamless noise across tile boundaries
+    const worldW = GRID_COLS * TILE_W;
+    const worldH = GRID_ROWS * TILE_H;
+
+    genTiles.forEach(mi => {
+      const mr = Math.floor(mi / GRID_COLS), mc = mi % GRID_COLS;
+      const baseX = mc * TILE_W, baseY = mr * TILE_H;
+
+      for (let r = 0; r < TILE_H; r++) {
+        for (let c = 0; c < TILE_W; c++) {
+          if (genFill === 'skip' && maps[mi][r][c] !== ' ') continue;
+
+          // Scale world position into noise space
+          const wx = (baseX + c) / worldW * genScale;
+          const wy = (baseY + r) / worldH * genScale;
+          const n  = octaveNoise(noiseFn, wx, wy, genOctaves, 0.5) * 100;
+
+          // Find matching band; if no match and Empty is not active, snap to nearest
+          const hasSpaceSym = allSyms.some(({sym}) => sym.char === ' ');
+          const match = bands.find(b => n >= b.lo && n <= b.hi)
+            || (!hasSpaceSym && bands.reduce((best, b) => {
+                const d  = Math.min(Math.abs(n - b.lo), Math.abs(n - b.hi));
+                const bd = Math.min(Math.abs(n - best.lo), Math.abs(n - best.hi));
+                return d < bd ? b : best;
+              }));
+          maps[mi][r][c] = match ? match.char : ' ';
+          delete cellColors[`${mi},${r},${c}`];
+        }
+      }
+      if (coherence > 0) smoothMap(mi, coherence);
+      refreshMap(mi);
+    });
+  }
+
+  scheduleAutosave();
+  closeModal('modal-gen');
+  toast(`Generated ${genTiles.size} tile${genTiles.size > 1 ? 's' : ''}`);
+}
+
+/* ════════════════════════════════════════════
+   ENTRY POINT
+════════════════════════════════════════════ */
+boot();
+</script>
+</body>
+</html>
