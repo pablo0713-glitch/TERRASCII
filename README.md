@@ -1,4 +1,4 @@
-# TERRASCII
+# TERRASCII v1.0
 
 > A self-contained ASCII tilemap editor for game designers, writers, and worldbuilders.
 
