@@ -1,101 +1,108 @@
-# TERRASCII v1.0
+# TERRASCII v2.0 — Unified Edition
 
-> A self-contained ASCII tilemap editor for game designers, writers, and worldbuilders.
+> A self-contained ASCII tilemap editor for game designers, writers, and worldbuilders — works on desktop and mobile from a single file.
 
-![TERRASCII screenshot placeholder](imgs/TERRASCII_SS1.png)
+**Canonical file:** `mobile/index.html`
+This is the active, unified codebase for all TERRASCII development. It replaces the separate `desktop/` version and supports both desktop and mobile interfaces from one HTML file.
 
-No build tools. No dependencies. No server. Download one HTML file, open it in a browser, and start mapping.
+No build tools. No dependencies. No server. Download one HTML file, open it in any modern browser on any device, and start mapping.
 
 ---
 
 ## What Is It?
 
-TERRASCII is a browser-based ASCII tilemap editor built entirely in vanilla HTML, CSS, and JavaScript. It's designed for tabletop RPG designers, indie game developers, writers crafting fictional worlds, and anyone who needs to create expressive maps using characters and symbols.
+TERRASCII is a browser-based ASCII tilemap editor built entirely in vanilla HTML, CSS, and JavaScript. The entire application ships as a **single `.html` file**.
 
-The entire application ships as a **single `.html` file**. You can host it on a web server, share it by email, or just keep it on your desktop — it works the same way in all cases.
+It supports two interface modes in the same file:
 
----
+| Mode | Interface | Best for |
+|---|---|---|
+| 🖥 **Desktop** | Classic fixed sidebar + keyboard/mouse controls | Wide-screen browsers, power users |
+| 📱 **Mobile** | Bottom toolbar + swipe-up sheets + touch gestures | Phones, tablets, touch screens |
 
-### Live Demo  
-https://pablo0713-glitch.github.io/TERRASCII/
+Switch modes at any time using the **🖥 / 📱 toggle** in the header, or append `?ui=desktop` / `?ui=mobile` to the URL. Your preference is saved automatically.
 
 ---
 
 ## Features
 
 ### Canvas & Editing
-
 - **Configurable grid** — set the number of tiles (cols × rows), tile dimensions in cells, and pixel size per cell
 - **Four brush modes** — Paint, Erase, Flood Fill, and Select
 - **Variable brush sizes** — 1×1, 3×3, 5×5, and 7×7 cell brushes
-- **4-connected and 8-connected flood fill** — toggle diagonal fill behavior in the sidebar
-- **Rectangular selection** with Copy, Cut, and Paste (four placement modes: top-left, cursor, same position as source, or custom map + offset)
+- **4-connected and 8-connected flood fill** — toggle diagonal fill behavior
+- **Rectangular selection** with Copy, Cut, and Paste (four placement modes)
 - **Per-cell color overrides** — individual cells can have colors independent of their palette defaults
 - **Undo / Redo** (Ctrl+Z / Ctrl+Y) — full snapshots before every major operation, 50-step stack
 - **Coordinate status bar** — shows tile, cell, and world coordinates on hover
 
 ### Symbol Palette
-
 - **Fully editable palette** — add, remove, and reorder categories and symbols
 - **Per-symbol color overrides** alongside category-level defaults
 - **Color clipboard** — copy a hex color from one symbol and paste it to another
-- **Active symbol indicator** always visible in the sidebar
+- **Active symbol indicator** always visible
+
+### Layers
+Three independent layers stack on top of each other — each has its own palette, map data, and cell color overrides:
+
+| Layer | Badge | Default palette | Purpose |
+|---|---|---|---|
+| **Terrain** | `T` (green) | Land, water, elevation, vegetation | Base world geography |
+| **Underground** | `U` (purple) | Walls, floors, dungeon features | Caves, dungeons, interiors |
+| **Structures** | `S` (amber) | Buildings, roads, town features | Towns, roads, surface structures |
+
+- Click a layer row in the sidebar (desktop) to make it active — the palette and brush switch to that layer
+- The eye button (◉/○) toggles layer visibility
+- Layer names are editable inline
+- Rendering composites layers bottom-up: Terrain → Underground → Structures. Empty cells (space) in upper layers are transparent — the layer below shows through.
+- Layer data is saved with the project (v2 schema)
 
 ### Terrain Generation
+Open the **Generate** modal to fill tiles procedurally. Five tabs:
 
-Open the **Generate** modal to fill tiles procedurally. Three tabs, each with its own approach:
+**Weighted Random** — assign percentage weights to symbols. Live CDF bar, coherence smoothing, overwrite/skip modes.
 
-**Weighted Random**
-Assign percentage weights to any symbols. A live CDF bar shows the distribution as you type. Coherence slider adds smoothing passes after generation. Choose to overwrite all cells or skip non-empty ones.
+**Perlin Noise** — dual-handle noise bands per symbol, per-symbol enable/disable, scale/octaves/seed/coherence controls. Random Bands and Reset buttons.
 
-**Perlin Noise**
-Each symbol gets a dual-handle noise band defining the value range it occupies. Per-symbol enable/disable checkboxes let you leave gaps intentionally. Controls for scale, octaves, seed, and coherence. Includes **Random Bands** (randomised non-overlapping ranges) and **Reset** (even distribution).
+**Water** — two ordered passes:
+1. **Bodies of Water** — Poisson-disk sampled lakes with user-defined depth rings (center → shore), Perlin-wobbled organic shapes
+2. **Rivers & Streams** — explicit source → destination pairs, noise-guided meander + destination pull. Click cells on the map to set points.
 
-**Water**
-Two ordered passes designed to be run after terrain generation:
-
-1. **Bodies of Water** — Poisson-disk sampled lakes with user-defined depth rings (center → shore). Each ring specifies a symbol and relative width. Lake shapes are organically varied using Perlin-wobbled ellipses.
-2. **Rivers & Streams** — Explicit source → destination pairs. Each path is drawn with noise-guided meander and a destination-pull force. Rivers use `═`/`║` for cardinal movement; streams use `\`/`/` for diagonal. Source and destination points are set by clicking directly on the map while the modal fades transparent.
-
-The Water category is automatically excluded from Weighted and Perlin generation.
+**Roads & Paths** — generates roads and paths on the active structure layer (Underground or Structures). Uses the same noise-guided pathfinding as Rivers. Define source → destination pairs; roads use horizontal/vertical symbols, paths use a diagonal/winding symbol. The Terrain layer is never modified by this generator.
 
 ### Generation Presets
-
-- Save named presets capturing all three tabs — weights, bands, rings, river pairs, everything
-- Presets travel with the project `.json` file
-- Export presets as a standalone `.json`; import and merge from file
+- Save named presets capturing all three tabs
+- Presets travel with the project `.json`
+- Export/import presets as standalone `.json` files
 
 ### Export & Project Management
-
 | Action | Result |
 |---|---|
-| **Save Project** | Downloads a `.json` file with the full project state |
+| **Save Project** | Downloads a `.json` with full project state |
 | **Open Project** | Loads a previously saved `.json` |
-| **New Project** | Resets to a fresh grid with a new name |
-| **Save Map** | Downloads the active tile as a `.txt` file |
+| **New Project** | Resets to a fresh grid |
+| **Save Map** | Downloads the active tile as `.txt` |
 | **Export Maps** | Downloads every tile as individual `.txt` files |
 | **Copy Map** | Copies the active tile text to the system clipboard |
 | **Legend** | Exports the symbol palette as a reference `.json` |
 
-**Autosave** runs automatically in the background (debounced, 900 ms after any change) using `localStorage`. Your work is restored the next time you open the file in the same browser.
+**Autosave** runs automatically (debounced, 900 ms) via `localStorage`. Your work is restored the next time you open the file in the same browser.
 
 ### Screenshot Mode
-
-Hides the header, sidebar, grid lines, tile borders, and active-map highlight. The map fills the view with 20 px of clean padding — ready for your OS or browser screenshot tool. Press **Escape** or click the exit button to return to the editor.
+Hides all UI chrome for clean screenshotting. Press **Escape** or click the exit button to return.
 
 ---
 
 ## Getting Started
 
-1. Download `TERRASCII.html`
-2. Open it in any modern browser (Chrome, Firefox, Safari, Edge)
-3. Start painting
-
-That's it. There's nothing to install.
+1. Open `mobile/index.html` in any modern browser (Chrome, Firefox, Safari, Edge)
+2. On a wide screen it defaults to desktop mode (sidebar). On a phone/tablet it defaults to mobile mode (bottom toolbar).
+3. Use the **🖥 / 📱** toggle in the header to switch at any time.
+4. Start painting!
 
 ---
 
-## Keyboard Shortcuts
+## Keyboard Shortcuts (Desktop Mode)
 
 | Shortcut | Action |
 |---|---|
@@ -109,61 +116,17 @@ That's it. There's nothing to install.
 
 ---
 
-## Project File Format
-
-Projects are saved as JSON (schema version 1):
-
-```json
-{
-  "version": 1,
-  "name": "my-world",
-  "gridCols": 3,
-  "gridRows": 3,
-  "tileW": 18,
-  "tileH": 18,
-  "cellPx": 22,
-  "categories": [ ... ],
-  "maps": [ ... ],
-  "cellColors": { ... },
-  "genPresets": [ ... ]
-}
-```
-
-Maps are stored as arrays of strings (one string per row). Cell color overrides are keyed as `"mi,row,col"`. Generation presets include the full state of all three generator tabs.
-
----
-
-## Default Symbol Palette
-
-TERRASCII ships with six categories out of the box:
-
-| Category | Symbols |
-|---|---|
-| **Water** | `~` shallow · `≈` deep · `═` `║` river · `\` `/` stream |
-| **Land** | `.` grass · `,` scrub · `·` plains · `"` desert · `∴` badlands · `≡` swamp |
-| **Elevation** | `^` hills · `▲` peak · `#` cliffs · `█` impassable |
-| **Vegetation** | `T` tree · `↑` pine · `♣` forest · `*` brush |
-| **Structures** | `o` settlement · `⌂` town · `+` temple · `x` dungeon · `?` POI |
-| **Empty** | ` ` clear |
-
-All categories and symbols are fully editable.
-
----
-
 ## Architecture
 
-TERRASCII is intentionally dependency-free and build-free. The entire codebase is one file:
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for a full technical breakdown.
 
-- **Pure HTML + CSS + vanilla JS** — no frameworks, no modules, no transpilation
+In brief:
+- **Pure HTML + CSS + vanilla JS** — no frameworks, no modules, no build step
+- **Single self-contained file** — open directly in any modern browser
+- **Interface mode system** — `body.ui-desktop` / `body.ui-mobile` CSS classes + `applyUIMode()` JS function
 - **All state is module-level variables** — no classes, no global state objects
-- **Undo/redo** via JSON snapshots of `{maps, cellColors}` on a capped array stack
-- **Seeded LCG + Perlin noise** — `makePerlin()` / `octaveNoise()` — fully self-contained
-- **Flood fill** — iterative stack-based, no recursion, 4- or 8-connected
-- **Poisson-disk sampling** for even lake distribution
-- **Noise-guided river pathfinding** with destination-pull blending and 4-step backtrack memory to prevent self-crossing
-- **World-coordinate accessors** (`worldGet` / `worldSet`) enable seamless generation across tile boundaries
-- **CSS custom properties** (`--bg`, `--text`, `--accent`, …) make theming straightforward
-- Screenshot mode is a single CSS class toggle on `<body>`
+- **Seeded LCG + Perlin noise** — fully self-contained generation algorithms
+- **CSS custom properties** (`--bg`, `--text`, `--accent`, …) for theming
 
 ---
 
@@ -171,35 +134,32 @@ TERRASCII is intentionally dependency-free and build-free. The entire codebase i
 
 Any modern browser with ES2020 support. No polyfills required.
 
-- Chrome 88+
-- Firefox 85+
-- Safari 14+
-- Edge 88+
+- Chrome 88+, Firefox 85+, Safari 14+, Edge 88+
 
-Running from a local `file://` path disables `localStorage` autosave in some browsers. Serving the file over `http://localhost` (e.g. with `npx serve .`) restores autosave if needed.
-
----
-
-## License
-
-MIT — see [LICENSE](LICENSE) for details.
-
----
-
-### AI Assistance Notice
-TERRASCII was designed, directed, and authored by Pablo (Furious Quan). Coding was 100% done by Claude Sonnet 4.6. All architecture, features, algorithms, and design decisions were reviewed by the author. The final code has been tested and is considered a work in progress.
+Running from a local `file://` path disables `localStorage` autosave in some browsers. Serving over `http://localhost` (e.g. `npx serve .`) restores autosave.
 
 ---
 
 ## Contributing
 
-Issues and pull requests are welcome. Because the project is a single self-contained file, the contribution bar is low — no build environment to set up, no dependencies to install. Open the file, make your changes, verify in a browser, and submit a PR.
+Issues and pull requests are welcome. All work goes into `mobile/index.html` — the `desktop/` directory is archived as v1.0 and is no longer maintained.
 
-When contributing new features, please keep the zero-dependency, single-file constraint intact.
+Please refer to [ARCHITECTURE.md](./ARCHITECTURE.md) and `.github/` for coding standards (vanilla JS, single-file constraint, ESLint).
+
+---
+
+## License
+
+MIT — see [desktop/LICENSE](../desktop/LICENSE) for details.
+
+---
+
+### AI Assistance Notice
+TERRASCII was designed, directed, and authored by Pablo (Furious Quan). Coding was done by Claude Sonnet. All architecture, features, algorithms, and design decisions were reviewed by the author.
 
 ---
 
 ## Contact
 
-[furioquan@gmail.com](mailto:furioquan@gmail.com)
+[furioquan@gmail.com](mailto:furioquan@gmail.com)  
 [X](https://x.com/waywardisopod)

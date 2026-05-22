@@ -60,6 +60,14 @@
     highlight for clean screenshotting with the OS / browser tool
   · 20 px padding around the map; Escape or button to exit
 
+  Interface Mode Switch (new in unified v2)
+  · 🖥 / 📱 toggle in the header to force either the classic desktop sidebar
+    (keyboard/mouse, side panel) or the mobile touch interface (bottom toolbar
+    + bottom sheets)
+  · URL flag: append ?ui=desktop or ?ui=mobile to the file URL
+  · Preference is persisted in localStorage and auto-detected on first load
+    (wide viewports default to desktop)
+
   ARCHITECTURE
   ────────────
   · Pure HTML + CSS + vanilla JS — no frameworks, no modules, no build
@@ -81,13 +89,13 @@
   · CSS custom properties (--bg, --text, --accent …) for full theming
   · Screenshot mode is a single CSS class toggle on <body>
 
-  Open Source — MIT License - Human‑directed project with 100% coding by Claude Sonnet 4.6.
+  Open Source — MIT License
   ─────────────────────────────────────────────────────────────────
 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>TERRASCII</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Rajdhani:wght@500;600;700&display=swap');
@@ -195,16 +203,8 @@ body {
 /* ══ LAYOUT ══ */
 #app { display: flex; flex: 1; overflow: hidden; }
 
-/* ══ SIDEBAR ══ */
-#sidebar {
-  width: 260px;
-  flex-shrink: 0;
-  background: var(--panel);
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-}
+/* ══ SIDEBAR — hidden, replaced by bottom sheets ══ */
+#sidebar { display: none; }
 
 .s-section {
   border-bottom: 1px solid var(--border);
@@ -384,7 +384,10 @@ input[type="color"] {
   width: var(--cell); height: var(--cell);
   display: flex; align-items: center; justify-content: center;
   font-family: var(--mono);
-  font-size: 13px; font-weight: 600;
+  /* Scale font proportionally to cell size so block/box-drawing chars always fit */
+  font-size: calc(var(--cell) * 0.68); font-weight: 600;
+  line-height: 1;
+  overflow: hidden;
   user-select: none;
   background: #090b10;
   border: 1px solid #10131c;
@@ -443,7 +446,7 @@ input[type="color"] {
 }
 .modal-x:hover { color: var(--accent3); }
 
-.modal-body { padding: 14px; display: flex; flex-direction: column; gap: 11px; overflow-y: auto; }
+.modal-body { padding: 14px; display: flex; flex-direction: column; gap: 11px; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
 .modal-row  { display: flex; gap: 8px; align-items: center; }
 .modal-lbl  { font-size: 12px; color: var(--text); width: 120px; flex-shrink: 0; }
 .modal-foot {
@@ -493,6 +496,518 @@ input[type="color"] {
 }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+/* ══ INTERACTION MODE STRIP (mobile) ══ */
+#mode-strip {
+  display: flex;
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  height: 54px;
+  background: var(--surface);
+  border-top: 1px solid var(--border2);
+  z-index: 150;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 0 12px;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.imode-btn {
+  flex: 1;
+  max-width: 180px;
+  height: 40px;
+  background: var(--panel);
+  border: 1px solid var(--border2);
+  color: var(--text2);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  transition: all .14s;
+  border-radius: 0;
+}
+.imode-btn:first-child { border-radius: 4px 0 0 4px; }
+.imode-btn:last-child  { border-radius: 0 4px 4px 0; border-left: none; }
+.imode-btn.active {
+  background: #0e2018;
+  border-color: var(--accent);
+  color: var(--accent);
+  z-index: 1;
+}
+.imode-btn .imode-icon { font-size: 16px; line-height: 1; }
+
+/* Body padding accounts for toolbar (52px) + mode-strip (54px) */
+body { padding-bottom: calc(106px + env(safe-area-inset-bottom, 0px)); }
+body.screenshot-mode #mode-strip { display: none; }
+
+
+/* ══ BOTTOM TOOLBAR ══
+   Always-visible row above the mode strip.
+   Contains: symbol indicator, brush mode buttons, tools toggle. */
+#bottom-toolbar {
+  position: fixed;
+  bottom: 54px; /* sits above mode-strip */
+  left: 0; right: 0;
+  height: 52px;
+  background: var(--surface);
+  border-top: 1px solid var(--border2);
+  z-index: 140;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 10px;
+  padding-bottom: 0;
+}
+
+/* Adjust mode-strip for safe area — toolbar sits on top */
+#mode-strip {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Symbol indicator button in toolbar */
+#tb-sym-btn {
+  width: 44px; height: 44px;
+  background: #0e2018;
+  border: 1.5px solid var(--accent);
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 20px; font-weight: 700;
+  color: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; flex-shrink: 0;
+  transition: all .12s;
+}
+#tb-sym-btn:active { filter: brightness(1.3); }
+
+/* Brush mode buttons in toolbar */
+.tb-mode-btn {
+  flex: 1;
+  height: 40px;
+  background: var(--panel);
+  border: 1px solid var(--border2);
+  border-radius: 4px;
+  color: var(--text2);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .5px;
+  display: flex; align-items: center; justify-content: center;
+  gap: 5px; cursor: pointer;
+  transition: all .12s;
+}
+.tb-mode-btn.active {
+  background: #0e2018;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.tb-mode-btn .tb-icon { font-size: 15px; }
+
+/* Tools toggle button */
+#tb-tools-btn {
+  width: 44px; height: 44px;
+  background: var(--panel);
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  color: var(--text2);
+  font-size: 20px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; flex-shrink: 0;
+  transition: all .12s;
+}
+#tb-tools-btn.active, #tb-tools-btn:active {
+  background: #0e2018; border-color: var(--accent); color: var(--accent);
+}
+
+/* ══ BOTTOM SHEETS ══ */
+.bottom-sheet-bg {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.55);
+  z-index: 160;
+  align-items: flex-end;
+  justify-content: center;
+}
+.bottom-sheet-bg.open { display: flex; }
+
+.bottom-sheet-bg {
+  /* Backdrop itself doesn't capture pointer events — the
+     close-strip inside the sheet does, keeping scroll free */
+  pointer-events: none;
+}
+.bottom-sheet-bg.open { pointer-events: auto; }
+
+.bottom-sheet {
+  width: 100%;
+  max-width: 640px;
+  max-height: 72vh;
+  background: var(--panel);
+  border-top: 1px solid var(--border2);
+  border-radius: 14px 14px 0 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  pointer-events: auto; /* sheet always captures its own touches */
+}
+
+/* Tap-to-close strip: fills the backdrop above the sheet */
+.sheet-close-strip {
+  flex: 1;
+  cursor: pointer;
+  min-height: 44px;
+}
+
+.sheet-handle {
+  width: 36px; height: 4px;
+  background: var(--border2);
+  border-radius: 2px;
+  margin: 10px auto 0;
+  flex-shrink: 0;
+}
+
+.sheet-hdr {
+  display: flex; align-items: center;
+  padding: 10px 16px 8px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  gap: 8px;
+}
+.sheet-hdr h3 {
+  font-family: var(--head);
+  font-size: 13px; font-weight: 700;
+  letter-spacing: 3px; text-transform: uppercase;
+  color: var(--accent); flex: 1;
+}
+.sheet-close {
+  background: transparent; border: none;
+  color: var(--text2); font-size: 18px; cursor: pointer;
+  padding: 0 4px; line-height: 1;
+}
+.sheet-close:active { color: var(--accent3); }
+
+.sheet-body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 10px;
+  flex: 1;
+}
+
+/* Palette sheet: symbol grid inside */
+.sheet-cat-block { display: flex; flex-direction: column; gap: 6px; }
+.sheet-cat-hdr   { display: flex; align-items: center; gap: 7px; }
+.sheet-cat-dot   { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; border: 1px solid rgba(255,255,255,.15); }
+.sheet-cat-lbl   { font-family: var(--head); font-size: 12px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; color: var(--text); }
+.sheet-sym-grid  { display: grid; grid-template-columns: repeat(auto-fill, minmax(52px,1fr)); gap: 6px; }
+
+.sheet-sym-btn {
+  height: 52px;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 20px; font-weight: 700;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  cursor: pointer; transition: all .1s;
+  gap: 2px;
+}
+.sheet-sym-btn span.sym-label {
+  font-size: 8px; color: var(--text3);
+  letter-spacing: .3px; text-align: center;
+  line-height: 1; max-width: 100%; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; padding: 0 3px;
+}
+.sheet-sym-btn.active {
+  border-color: var(--accent);
+  background: #0e2018;
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+
+/* Tools sheet rows */
+.tools-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 0; border-bottom: 1px solid var(--border);
+}
+.tools-row:last-child { border-bottom: none; }
+.tools-lbl {
+  font-size: 11px; color: var(--text2);
+  width: 80px; flex-shrink: 0;
+}
+.tools-btn-group { display: flex; gap: 4px; flex: 1; }
+.tools-btn {
+  flex: 1; height: 40px;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 4px;
+  color: var(--text2);
+  font-family: var(--mono); font-size: 12px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: all .12s; gap: 5px;
+}
+.tools-btn.active { background: #0e2018; border-color: var(--accent); color: var(--accent); }
+.tools-btn.danger { border-color: #503030; color: var(--accent3); }
+.tools-btn.danger:active { background: #200e0e; }
+.tools-btn:active { background: #0e2018; }
+
+/* Canvas body padding when toolbar is visible */
+body { /* base — no bottom pad */ }
+
+/* On all screens: show toolbar and sheets (unified approach) */
+#bottom-toolbar { display: flex; }
+/* Mode strip bottom accounts for safe area */
+
+/* Screenshot mode hides toolbar and sheets */
+body.screenshot-mode #bottom-toolbar { display: none; }
+body.screenshot-mode .bottom-sheet-bg { display: none !important; }
+
+/* ══ HEADER MOBILE ══
+   On small screens collapse the header to just the essentials.
+   All project/export actions live in the tools sheet. */
+@media (max-width: 600px) {
+  #header .sep           { display: none; }
+  #header .hbtn          { display: none; }
+  #header #project-name  { display: none; }
+  #header #autosave-badge{ display: none; }
+  #header #coord-bar     { display: none; }
+
+  /* Keep: title, zoom label, undo, redo */
+  #header h1             { display: flex; }
+  #header #btn-undo      { display: flex; align-items: center; }
+  #header #btn-redo      { display: flex; align-items: center; }
+  #header #zoom-label    { display: inline; margin-left: auto; }
+
+  #header {
+    padding: 5px 10px;
+    gap: 6px;
+  }
+  #header h1 { font-size: 15px; letter-spacing: 2px; }
+}
+
+/* ══ MODAL MOBILE IMPROVEMENTS ══ */
+@media (max-width: 600px) {
+  /* Full-width modals that slide up from bottom */
+  .modal-bg {
+    align-items: flex-end;
+  }
+  .modal {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 90vh;
+    border-radius: 14px 14px 0 0;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+  }
+
+  /* Larger tap targets for all inputs */
+  input[type="text"],
+  input[type="number"] {
+    font-size: 16px !important; /* prevents iOS zoom on focus */
+    padding: 9px 10px !important;
+    min-height: 44px;
+  }
+  input[type="color"] {
+    width: 44px !important;
+    height: 44px !important;
+  }
+  select {
+    font-size: 16px !important;
+    padding: 8px 10px !important;
+    min-height: 44px;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border2);
+    border-radius: 2px;
+  }
+
+  /* Larger sbtn tap targets */
+  .sbtn {
+    padding: 10px 14px !important;
+    font-size: 13px !important;
+    min-height: 44px;
+  }
+
+  /* Modal rows: stack on very narrow screens */
+  .modal-row {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .modal-lbl {
+    width: 100% !important;
+    font-size: 13px !important;
+  }
+
+  /* Generate modal tabs: scrollable row */
+  .gen-tab-row {
+    display: flex !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap !important;
+    gap: 0;
+    padding-bottom: 1px;
+    margin-bottom: 14px;
+  }
+  .gen-tab-btn {
+    padding: 10px 16px !important;
+    font-size: 12px !important;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+    min-height: 44px;
+  }
+
+  /* Larger gen sym rows */
+  .gen-sym-row {
+    padding: 8px 0;
+    gap: 10px;
+  }
+  .gen-sym-char {
+    width: 36px !important;
+    height: 36px !important;
+    font-size: 18px !important;
+  }
+  .gen-sym-name {
+    font-size: 12px !important;
+    width: 90px !important;
+  }
+
+  /* Tile check grid: bigger cells */
+  .tile-check {
+    min-height: 44px !important;
+    font-size: 13px !important;
+  }
+
+  /* River pair rows */
+  .river-pair-row {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .river-coord-btn {
+    padding: 8px 12px !important;
+    font-size: 12px !important;
+    min-height: 44px;
+  }
+
+  /* Water ring rows */
+  .water-ring-row {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 0;
+  }
+  .water-sym-pick {
+    min-height: 44px !important;
+    font-size: 16px !important;
+    width: 44px !important;
+  }
+
+  /* Preset rows */
+  .preset-row {
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 10px;
+  }
+  .preset-name { font-size: 13px !important; }
+
+  /* Param rows (sliders) */
+  .param-row label { font-size: 12px !important; width: 90px !important; }
+  .param-row input[type="range"] { height: 28px !important; }
+  .param-val { font-size: 13px !important; }
+
+  /* Dual range */
+  .dual-range-wrap { height: 36px !important; }
+  .dual-range-wrap input[type="range"] { height: 36px !important; }
+  .dual-range-val { font-size: 12px !important; }
+
+  /* Modal header + footer */
+  .modal-hdr { padding: 14px 16px !important; }
+  .modal-hdr h2 { font-size: 15px !important; }
+  .modal-foot { padding: 12px 16px !important; gap: 10px !important; }
+
+  /* Palette editor — two-line wrap layout per symbol */
+  .cat-card { padding: 12px !important; gap: 10px !important; }
+  .cat-card-hdr { flex-wrap: wrap; gap: 8px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+  .sym-edit-list { gap: 10px !important; }
+
+  /* Each symbol row wraps onto two lines:
+     Line 1: arrows | preview | name-input (flex:1)
+     Line 2: arrows(hidden) | char-input | color | copy | paste | delete */
+  .sym-edit-row {
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    align-items: center;
+  }
+  .sym-edit-row:last-child { border-bottom: none; }
+
+  /* Arrows: fixed left, natural height */
+  .sym-edit-row .arrow-col { flex-shrink: 0; }
+  .arr-btn { width: 28px !important; height: 28px !important; font-size: 11px !important; }
+
+  /* Preview: larger tap surface */
+  .sym-preview {
+    width: 44px !important; height: 44px !important;
+    font-size: 20px !important; flex-shrink: 0;
+  }
+
+  /* Name input: takes full remaining line width, forces wrap after */
+  .sym-edit-row input.flex1 {
+    flex: 1 1 120px;
+    min-height: 44px;
+    font-size: 15px !important;
+  }
+
+  /* Char input: second line start, after a forced break via large left margin */
+  .sym-edit-row input[maxlength='1'] {
+    margin-left: calc(17px + 44px + 6px); /* arrows(17) + preview(44) + gap(6) */
+    width: 44px !important;
+    min-height: 44px;
+    font-size: 18px !important;
+    text-align: center;
+    flex-shrink: 0;
+  }
+
+  /* Color, copy, paste, delete: same second line */
+  .sym-edit-row input[type='color'] { width: 44px !important; height: 44px !important; flex-shrink: 0; }
+  .sym-edit-row .sbtn {
+    min-height: 44px;
+    padding: 8px 12px !important;
+    font-size: 13px !important;
+    flex-shrink: 0;
+  }
+
+  /* Category header inputs + buttons */
+  .cat-card-hdr input[type='color'] { width: 44px !important; height: 44px !important; flex-shrink: 0; }
+  .cat-card-hdr input[type='text']  { min-height: 44px; font-size: 14px !important; flex: 1 1 120px; }
+  .cat-card-hdr .sbtn               { min-height: 44px; padding: 8px 14px !important; }
+}
+
+/* Larger range slider thumbs on touch devices */
+@media (pointer: coarse) {
+  input[type="range"]::-webkit-slider-thumb {
+    width: 24px !important;
+    height: 24px !important;
+  }
+  input[type="range"] {
+    height: 8px !important;
+  }
+  /* Brush size slider in toolbar */
+  #sheet-brush-slider::-webkit-slider-thumb {
+    width: 28px;
+    height: 28px;
+    -webkit-appearance: none;
+    background: var(--accent);
+    border-radius: 50%;
+    border: 2px solid var(--bg);
+    cursor: pointer;
+  }
+}
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
@@ -505,7 +1020,7 @@ input[type="color"] {
 #brush-size-slider::-webkit-slider-thumb:hover { background: var(--accent); }
 
 /* ══ GENERATE MODAL ══ */
-.gen-tab-row { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
+.gen-tab-row { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 14px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .gen-tab-btn {
   padding: 7px 14px; font-family: var(--mono); font-size: 11px; letter-spacing: .5px;
   background: transparent; border: none; border-bottom: 2px solid transparent;
@@ -680,7 +1195,10 @@ input[type="color"] {
    Toggled by toggleScreenshot(). Hides all UI chrome so the map
    fills the view cleanly for the user to screenshot with their own tool. */
 body.screenshot-mode #header     { display: none; }
-body.screenshot-mode #sidebar    { display: none; }
+body.screenshot-mode #sidebar        { display: none; }
+body.screenshot-mode #bottom-toolbar { display: none !important; }
+body.screenshot-mode #mode-strip     { display: none !important; }
+body.screenshot-mode .ui-switch      { display: none !important; }
 body.screenshot-mode #canvas-wrap { padding: 20px; }
 body.screenshot-mode #world-grid  { gap: 0; border: none; padding: 0; background: var(--bg); }
 body.screenshot-mode .map-tile    { outline: none; }
@@ -688,7 +1206,163 @@ body.screenshot-mode .map-tile.active-map { outline: none; }
 body.screenshot-mode .cell        { border-color: transparent; }
 body.screenshot-mode #screenshot-exit {
   display: flex !important;
-}</style>
+}
+/* ══ UI MODE SWITCH (Desktop vs Mobile Interface) ══
+   Explicit toggle + ?ui=desktop|mobile URL flag + localStorage.
+   Forces either the classic sidebar (desktop controls) or the
+   bottom-toolbar + bottom-sheets (mobile controls). Overrides the
+   responsive defaults when a mode is chosen by the user.
+*/
+.ui-switch {
+  display: inline-flex;
+  margin-left: 10px;
+  border: 1px solid var(--border2);
+  border-radius: 3px;
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .5px;
+  flex-shrink: 0;
+  align-self: center;
+}
+.ui-switch button {
+  background: var(--surface);
+  border: none;
+  color: var(--text2);
+  padding: 4px 9px;
+  cursor: pointer;
+  transition: all .1s;
+  font-family: var(--mono);
+  line-height: 1;
+}
+.ui-switch button + button {
+  border-left: 1px solid var(--border2);
+}
+.ui-switch button.active {
+  background: #0e2018;
+  color: var(--accent);
+}
+.ui-switch button:hover:not(.active) {
+  color: var(--text);
+}
+
+/* ── Forced Desktop Interface ──────────────────────────────── */
+body.ui-desktop #sidebar {
+  display: flex !important;
+  flex-direction: column;
+  width: 260px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  background: var(--panel);
+}
+
+/* Make the Symbols palette section (the second .s-section) always expand
+   and become scrollable in desktop mode — exactly what the user expects. */
+body.ui-desktop #sidebar .s-section:last-child {
+  flex: 1 1 auto;
+  min-height: 0;           /* required for flex child to scroll */
+  overflow-y: auto;
+}
+
+body.ui-desktop #sidebar #palette-area {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+body.ui-desktop #bottom-toolbar,
+body.ui-desktop #mode-strip {
+  display: none !important;
+}
+body.ui-desktop {
+  padding-bottom: 0 !important;
+}
+
+/* ── Forced Mobile Interface ───────────────────────────────── */
+body.ui-mobile #sidebar {
+  display: none !important;
+}
+body.ui-mobile #bottom-toolbar {
+  display: flex !important;
+}
+body.ui-mobile #mode-strip {
+  display: flex !important;
+}
+
+body.screenshot-mode { padding-bottom: 0 !important; }
+
+/* ══ LAYER PANEL (sidebar) ══ */
+.layer-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background .1s;
+  border: 1px solid transparent;
+}
+.layer-row:hover { background: var(--surface); }
+.layer-row.active-layer {
+  background: #0e2018;
+  border-color: var(--accent);
+}
+.layer-vis-btn {
+  background: transparent;
+  border: none;
+  color: var(--text3);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: color .1s;
+}
+.layer-vis-btn.visible { color: var(--accent); }
+.layer-vis-btn:hover { color: var(--text); }
+.layer-name-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 2px 4px;
+  outline: none;
+  border-radius: 2px;
+  min-width: 0;
+}
+.layer-name-input:focus {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+}
+.layer-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .5px;
+  padding: 1px 5px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  text-transform: uppercase;
+}
+.layer-badge.terrain  { background: #0e2018; color: var(--accent);  border: 1px solid var(--accent); }
+.layer-badge.lower    { background: #1a0e28; color: #b070f0;        border: 1px solid #b070f0; }
+.layer-badge.upper    { background: #1a1a0e; color: var(--accent2); border: 1px solid var(--accent2); }
+
+/* Starter palette picker in palette editor */
+.starter-palette-btn {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  color: var(--text2);
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 5px 10px;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: all .12s;
+}
+.starter-palette-btn:hover { border-color: var(--accent2); color: var(--accent2); }</style>
 </head>
 <body>
 
@@ -716,6 +1390,7 @@ body.screenshot-mode #screenshot-exit {
   <button class="hbtn" id="btn-undo" onclick="undo()" title="Undo (Ctrl+Z)" style="opacity:.4" disabled>↩ Undo</button>
   <button class="hbtn" id="btn-redo" onclick="redo()" title="Redo (Ctrl+Y)" style="opacity:.4" disabled>↪ Redo</button>
   <span id="autosave-badge"></span>
+  <span id="zoom-label" style="font-size:11px;color:var(--text3);letter-spacing:.4px;white-space:nowrap">100%</span>
   <div id="coord-bar">—</div>
 </div>
 
@@ -928,6 +1603,17 @@ body.screenshot-mode #screenshot-exit {
     </div>
     <div class="modal-body">
 
+      <!-- Tab bar —  explicit inline styles guarantee visibility -->
+      <div class="gen-tab-row" style="display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;overflow-x:auto;min-height:40px;border-bottom:1px solid var(--border);margin-bottom:14px;gap:0">
+        <button class="gen-tab-btn active" id="gen-tab-weighted" onclick="setGenTab('weighted')" style="flex-shrink:0;padding:8px 16px;font-family:var(--mono);font-size:12px;background:transparent;border:none;border-bottom:2px solid var(--accent);color:var(--accent);cursor:pointer;white-space:nowrap;min-height:40px;display:inline-flex;align-items:center">⊹ Weighted</button>
+        <button class="gen-tab-btn"        id="gen-tab-perlin"   onclick="setGenTab('perlin')"   style="flex-shrink:0;padding:8px 16px;font-family:var(--mono);font-size:12px;background:transparent;border:none;border-bottom:2px solid transparent;color:var(--text2);cursor:pointer;white-space:nowrap;min-height:40px;display:inline-flex;align-items:center">∿ Perlin</button>
+        <button class="gen-tab-btn"        id="gen-tab-water"    onclick="setGenTab('water')"    style="flex-shrink:0;padding:8px 16px;font-family:var(--mono);font-size:12px;background:transparent;border:none;border-bottom:2px solid transparent;color:var(--text2);cursor:pointer;white-space:nowrap;min-height:40px;display:inline-flex;align-items:center">≋ Water</button>
+        <button class="gen-tab-btn"        id="gen-tab-roads"    onclick="setGenTab('roads')"    style="flex-shrink:0;padding:8px 16px;font-family:var(--mono);font-size:12px;background:transparent;border:none;border-bottom:2px solid transparent;color:var(--text2);cursor:pointer;white-space:nowrap;min-height:40px;display:inline-flex;align-items:center">⊞ Roads</button>
+        <button class="gen-tab-btn"        id="gen-tab-presets"  onclick="setGenTab('presets')"  style="flex-shrink:0;padding:8px 16px;font-family:var(--mono);font-size:12px;background:transparent;border:none;border-bottom:2px solid transparent;color:var(--text2);cursor:pointer;white-space:nowrap;min-height:40px;display:inline-flex;align-items:center">⊞ Presets</button>
+      </div>
+
+      <div class="divider"></div>
+
       <!-- Tile selection (shared) -->
       <div>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
@@ -941,14 +1627,6 @@ body.screenshot-mode #screenshot-exit {
       </div>
 
       <div class="divider"></div>
-
-      <!-- Tab bar -->
-      <div class="gen-tab-row">
-        <button class="gen-tab-btn active" id="gen-tab-weighted" onclick="setGenTab('weighted')">⊹ Weighted</button>
-        <button class="gen-tab-btn"        id="gen-tab-perlin"   onclick="setGenTab('perlin')">∿ Perlin</button>
-        <button class="gen-tab-btn"        id="gen-tab-water"    onclick="setGenTab('water')">≋ Water</button>
-        <button class="gen-tab-btn"        id="gen-tab-presets"  onclick="setGenTab('presets')">⊞ Presets</button>
-      </div>
 
       <!-- ══ TAB: WEIGHTED ══ -->
       <div class="gen-tab-panel active" id="gen-panel-weighted">
@@ -1143,6 +1821,81 @@ body.screenshot-mode #screenshot-exit {
 
       </div><!-- end water panel -->
 
+      <!-- ══ TAB: ROADS & PATHS ══
+           Generates roads, paths, and trails on the active structure layer
+           (Underground or Structures). Reuses the river pathfinding algorithm
+           with user-chosen symbols. Terrain layer is unaffected. -->
+      <div class="gen-tab-panel" id="gen-panel-roads">
+        <div class="muted" style="font-size:10px;line-height:1.5;padding:2px 0 6px">
+          Generates roads and paths on the <strong style="color:var(--accent2)">active structure layer</strong>
+          (Underground or Structures). Switch layers in the sidebar before generating.
+          Uses the same pathfinding as Rivers — define source → destination pairs below.
+        </div>
+
+        <!-- Active layer indicator -->
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--surface);border:1px solid var(--border2);border-radius:3px">
+          <span style="font-size:11px;color:var(--text2)">Active layer:</span>
+          <span id="roads-layer-badge" style="font-size:11px;font-weight:700;color:var(--accent2)">—</span>
+          <span class="muted" style="font-size:10px">(change in sidebar Layers panel)</span>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Road symbol -->
+        <div class="param-row">
+          <label>Road symbol</label>
+          <select id="roads-sym-h" style="background:var(--surface);border:1px solid var(--border2);color:var(--text);font-family:var(--mono);font-size:12px;padding:3px 6px;border-radius:2px"></select>
+          <span class="muted" style="font-size:10px;margin-left:4px">horiz</span>
+          <select id="roads-sym-v" style="background:var(--surface);border:1px solid var(--border2);color:var(--text);font-family:var(--mono);font-size:12px;padding:3px 6px;border-radius:2px"></select>
+          <span class="muted" style="font-size:10px;margin-left:4px">vert</span>
+        </div>
+        <div class="param-row">
+          <label>Path symbol</label>
+          <select id="roads-sym-path" style="background:var(--surface);border:1px solid var(--border2);color:var(--text);font-family:var(--mono);font-size:12px;padding:3px 6px;border-radius:2px"></select>
+          <span class="muted" style="font-size:10px;margin-left:4px">diagonal / winding</span>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Meander / seed -->
+        <div class="param-row">
+          <label>Meander</label>
+          <input type="range" id="roads-meander" min="0" max="10" value="2"
+            oninput="document.getElementById('roads-meander-v').textContent=this.value">
+          <span class="param-val" id="roads-meander-v">2</span>
+          <span class="muted" style="font-size:10px">0 = straight, 10 = winding</span>
+        </div>
+        <div class="param-row">
+          <label>Seed</label>
+          <input type="number" id="roads-seed" value="99" style="width:80px">
+          <button class="sbtn" style="padding:4px 10px;font-size:11px"
+            onclick="document.getElementById('roads-seed').value=Math.floor(Math.random()*99999)">↺ Random</button>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Path pairs -->
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:11px;color:var(--text2)">Road &amp; path routes (source → destination):</span>
+          <div style="display:flex;gap:5px">
+            <button class="sbtn green" style="padding:3px 9px;font-size:11px" onclick="addRoadPair('road')">+ Road</button>
+            <button class="sbtn" style="padding:3px 9px;font-size:11px" onclick="addRoadPair('path')">+ Path</button>
+          </div>
+        </div>
+        <div id="road-pair-list" style="display:flex;flex-direction:column;gap:5px;margin-top:6px"></div>
+        <div class="muted" style="font-size:10px;margin-top:4px">Click Set to pick a cell on the map. Roads use horiz/vert symbols; paths use the diagonal symbol.</div>
+
+        <div class="divider"></div>
+
+        <div class="param-row">
+          <label>Fill mode</label>
+          <div style="display:flex;gap:6px;flex:1">
+            <button class="gen-mode-btn active" id="gen-fill-overwrite-r" onclick="setGenFill('overwrite')" style="flex:0 0 auto;padding:4px 12px">Overwrite</button>
+            <button class="gen-mode-btn"        id="gen-fill-skip-r"      onclick="setGenFill('skip')"      style="flex:0 0 auto;padding:4px 12px">Skip non-empty</button>
+          </div>
+        </div>
+      </div><!-- end roads panel -->
+
       <!-- ══ TAB: PRESETS ══ -->
       <div class="gen-tab-panel" id="gen-panel-presets">
         <div class="muted" style="font-size:10px;line-height:1.5;padding:2px 0 4px">
@@ -1178,6 +1931,165 @@ body.screenshot-mode #screenshot-exit {
 </div>
 
 <div id="toast"></div>
+
+<!-- ══ BOTTOM TOOLBAR ══ -->
+<div id="bottom-toolbar">
+  <!-- Active symbol — opens palette sheet -->
+  <button id="tb-sym-btn" onclick="openSheet('sheet-palette')" title="Choose symbol">·</button>
+
+  <!-- Brush mode buttons -->
+  <button class="tb-mode-btn" id="tb-paint"  onclick="setMode('paint')">
+    <span class="tb-icon">✏</span> Paint
+  </button>
+  <button class="tb-mode-btn" id="tb-erase"  onclick="setMode('erase')">
+    <span class="tb-icon">⌫</span> Erase
+  </button>
+  <button class="tb-mode-btn" id="tb-fill"   onclick="setMode('fill')">
+    <span class="tb-icon">▣</span> Fill
+  </button>
+  <button class="tb-mode-btn active" id="tb-select" onclick="setMode('select')">
+    <span class="tb-icon">⬚</span> Select
+  </button>
+
+  <!-- Tools sheet toggle -->
+  <button id="tb-tools-btn" onclick="openSheet('sheet-tools')" title="Tools">⚙</button>
+</div>
+
+<!-- ══ PALETTE BOTTOM SHEET ══ -->
+<div class="bottom-sheet-bg" id="sheet-palette">
+  <div class="sheet-close-strip" onclick="closeSheet('sheet-palette')"></div>
+  <div class="bottom-sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-hdr">
+      <h3>Symbols</h3>
+      <div id="sheet-sel-indicator" style="display:flex;align-items:center;gap:6px;margin-right:8px">
+        <span id="sheet-sel-char" style="
+          font-family:var(--mono);font-size:17px;font-weight:700;
+          width:28px;height:28px;border-radius:3px;
+          background:#0e2018;border:1px solid var(--accent);
+          display:flex;align-items:center;justify-content:center;
+          color:var(--accent);line-height:1;flex-shrink:0;">·</span>
+        <span id="sheet-sel-name" style="font-size:11px;color:var(--text2)"></span>
+      </div>
+      <button class="sheet-close" onclick="closeSheet('sheet-palette')">✕</button>
+    </div>
+    <div class="sheet-body" id="sheet-palette-body"></div>
+  </div>
+</div>
+
+<!-- ══ TOOLS BOTTOM SHEET ══ -->
+<div class="bottom-sheet-bg" id="sheet-tools">
+  <div class="sheet-close-strip" onclick="closeSheet('sheet-tools')"></div>
+  <div class="bottom-sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-hdr">
+      <h3>Tools</h3>
+      <button class="sheet-close" onclick="closeSheet('sheet-tools')">✕</button>
+    </div>
+    <div class="sheet-body">
+
+      <!-- Brush size -->
+      <div class="tools-row">
+        <span class="tools-lbl">Brush size</span>
+        <div style="display:flex;align-items:center;gap:8px;flex:1">
+          <input type="range" id="sheet-brush-slider" min="0" max="3" value="0" step="1"
+            style="flex:1;height:6px;-webkit-appearance:none;appearance:none;background:var(--border);border-radius:3px;outline:none"
+            oninput="brushSize=+this.value;
+                     document.getElementById('brush-size-lbl').textContent=brushLabels[brushSize];
+                     document.getElementById('sheet-brush-lbl').textContent=brushLabels[brushSize]">
+          <span id="sheet-brush-lbl" style="font-size:12px;color:var(--text);font-family:var(--mono);width:28px;text-align:right">1×1</span>
+        </div>
+      </div>
+
+      <!-- Fill connectivity -->
+      <div class="tools-row">
+        <span class="tools-lbl">Fill mode</span>
+        <div class="tools-btn-group">
+          <button class="tools-btn active" id="sheet-fill4" onclick="setFillConn(4)">4-conn</button>
+          <button class="tools-btn"        id="sheet-fill8" onclick="setFillConn(8)">8-conn</button>
+        </div>
+      </div>
+
+      <!-- Copy / Cut / Paste -->
+      <div class="tools-row">
+        <span class="tools-lbl">Selection</span>
+        <div class="tools-btn-group">
+          <button class="tools-btn" onclick="selectionCopy();closeSheet('sheet-tools')">⎘ Copy</button>
+          <button class="tools-btn" onclick="selectionCut();closeSheet('sheet-tools')">✂ Cut</button>
+          <button class="tools-btn" onclick="closeSheet('sheet-tools');openPasteModal()">⧉ Paste</button>
+        </div>
+      </div>
+
+      <!-- Undo / Redo -->
+      <div class="tools-row">
+        <span class="tools-lbl">History</span>
+        <div class="tools-btn-group">
+          <button class="tools-btn" id="sheet-undo" onclick="undo()">↩ Undo</button>
+          <button class="tools-btn" id="sheet-redo" onclick="redo()">↪ Redo</button>
+        </div>
+      </div>
+
+      <!-- Clear -->
+      <div class="tools-row">
+        <span class="tools-lbl">Clear</span>
+        <div class="tools-btn-group">
+          <button class="tools-btn danger" onclick="clearActiveMap();closeSheet('sheet-tools')">✕ Clear Map</button>
+          <button class="tools-btn danger" onclick="clearAll();closeSheet('sheet-tools')">✕ Clear All</button>
+        </div>
+      </div>
+
+      <!-- Project actions -->
+      <div class="tools-row">
+        <span class="tools-lbl">Project</span>
+        <div class="tools-btn-group">
+          <button class="tools-btn" onclick="newProject();closeSheet('sheet-tools')">⊕ New</button>
+          <button class="tools-btn" onclick="openProject();closeSheet('sheet-tools')">⊞ Open</button>
+          <button class="tools-btn" onclick="saveProject();closeSheet('sheet-tools')">⊟ Save</button>
+        </div>
+      </div>
+
+      <!-- Editor modals -->
+      <div class="tools-row">
+        <span class="tools-lbl">Editor</span>
+        <div class="tools-btn-group">
+          <button class="tools-btn" onclick="closeSheet('sheet-tools');openGridConfig()">⊞ Grid</button>
+          <button class="tools-btn" onclick="closeSheet('sheet-tools');openPaletteEditor()">✦ Palette</button>
+          <button class="tools-btn" style="border-color:#3a5a3a;color:#8ef0a0" onclick="closeSheet('sheet-tools');openGenModal()">⚙ Gen</button>
+        </div>
+      </div>
+
+      <!-- Export -->
+      <div class="tools-row">
+        <span class="tools-lbl">Export</span>
+        <div class="tools-btn-group">
+          <button class="tools-btn" onclick="copyActiveMap();closeSheet('sheet-tools')">⎘ Copy</button>
+          <button class="tools-btn" onclick="downloadActiveMap();closeSheet('sheet-tools')">↓ Map</button>
+          <button class="tools-btn" onclick="exportMaps();closeSheet('sheet-tools')">↓ All</button>
+          <button class="tools-btn" onclick="exportLegend();closeSheet('sheet-tools')">↓ Legend</button>
+        </div>
+      </div>
+
+      <!-- Screenshot -->
+      <div class="tools-row">
+        <span class="tools-lbl">View</span>
+        <div class="tools-btn-group">
+          <button class="tools-btn" onclick="closeSheet('sheet-tools');toggleScreenshot()">⊡ Screenshot</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ══ INTERACTION MODE STRIP (mobile) ══ -->
+<div id="mode-strip">
+  <button class="imode-btn active" id="imode-pan"   onclick="setInteractionMode('pan')">
+    <span class="imode-icon">✥</span> Pan / Select
+  </button>
+  <button class="imode-btn"        id="imode-paint" onclick="setInteractionMode('paint')">
+    <span class="imode-icon">✏</span> Paint
+  </button>
+</div>
 
 <script>
 /* ════════════════════════════════════════════
@@ -1236,13 +2148,138 @@ let GRID_COLS = 3, GRID_ROWS = 3;
 let TILE_W = 18, TILE_H = 18;
 let CELL_PX = 22;
 
-// categories: Array<{id, name, color, symbols: Array<{char, name, color}>}>
-// The palette — all symbol definitions the user can paint with
+/* ════════════════════════════════════════════
+   LAYER SYSTEM
+   Three fixed layers: terrain (base), underground (lower), structures (upper).
+   Each layer has its own palette (categories), map data, and cell color overrides.
+   The active layer determines which palette is shown and which map data is painted.
+   Rendering composites layers bottom-up: terrain → underground → structures.
+   Empty cells (' ') in upper layers are transparent — terrain shows through.
+════════════════════════════════════════════ */
+
+/** Default starter palette for the Underground layer (dungeons, caves). */
+const UNDERGROUND_STARTER = [
+  { id: uid(), name: 'Walls', color: '#8a8a8a', symbols: [
+    { char: '█', name: 'Solid wall',       color: '#555555' },
+    { char: '░', name: 'Rubble',           color: '#7a7060' },
+    { char: '▓', name: 'Dense rubble',     color: '#6a6050' },
+    { char: '|', name: 'Wall (vertical)',  color: '#9a9a9a' },
+    { char: '-', name: 'Wall (horiz)',     color: '#9a9a9a' },
+    { char: '+', name: 'Wall junction',    color: '#9a9a9a' },
+    { char: '#', name: 'Rough wall',       color: '#7a6a5a' },
+  ]},
+  { id: uid(), name: 'Floors', color: '#5a5060', symbols: [
+    { char: '.', name: 'Stone floor',      color: '#6a6878' },
+    { char: '·', name: 'Dirt floor',       color: '#7a6a50' },
+    { char: ',', name: 'Gravel',           color: '#6a6060' },
+    { char: ' ', name: 'Empty',            color: '' },
+  ]},
+  { id: uid(), name: 'Features', color: '#b070f0', symbols: [
+    { char: '/', name: 'Door (open)',      color: '#c8a060' },
+    { char: '\\',name: 'Door (closed)',    color: '#c8a060' },
+    { char: 'x', name: 'Trap',            color: '#e05050' },
+    { char: '$', name: 'Treasure',        color: '#f0d040' },
+    { char: '?', name: 'Unknown',         color: '#60b8e0' },
+    { char: '^', name: 'Stairs up',       color: '#a0c8f0' },
+    { char: 'v', name: 'Stairs down',     color: '#a0c8f0' },
+    { char: 'o', name: 'Pillar',          color: '#8a8a8a' },
+    { char: '~', name: 'Water/pit',       color: '#4080c0' },
+  ]},
+];
+
+/** Default starter palette for the Structures layer (towns, buildings, roads). */
+const STRUCTURES_STARTER = [
+  { id: uid(), name: 'Buildings', color: '#c8a060', symbols: [
+    { char: '█', name: 'Solid wall',       color: '#8a7050' },
+    { char: '░', name: 'Wall (light)',     color: '#b09070' },
+    { char: '|', name: 'Wall (vertical)', color: '#c0a878' },
+    { char: '-', name: 'Wall (horiz)',    color: '#c0a878' },
+    { char: '+', name: 'Wall junction',   color: '#c0a878' },
+    { char: '/', name: 'Door (open)',     color: '#e0c080' },
+    { char: '\\',name: 'Door (closed)',   color: '#e0c080' },
+    { char: '#', name: 'Fence/hedge',     color: '#60a040' },
+  ]},
+  { id: uid(), name: 'Floors', color: '#a09080', symbols: [
+    { char: '.', name: 'Floor',           color: '#9a9080' },
+    { char: ',', name: 'Cobblestone',     color: '#8a8878' },
+    { char: ' ', name: 'Empty',           color: '' },
+  ]},
+  { id: uid(), name: 'Roads', color: '#ffcc44', symbols: [
+    { char: '═', name: 'Road (horiz)',    color: '#c8b060' },
+    { char: '║', name: 'Road (vert)',     color: '#c8b060' },
+    { char: '·', name: 'Path',           color: '#b0a070' },
+    { char: ':', name: 'Dirt road',      color: '#a09060' },
+  ]},
+  { id: uid(), name: 'Features', color: '#f0b858', symbols: [
+    { char: 'o', name: 'Well/fountain',  color: '#60b8e0' },
+    { char: '⌂', name: 'Building',       color: '#e08830' },
+    { char: 'T', name: 'Tree',           color: '#38a030' },
+    { char: '*', name: 'Bush/garden',    color: '#60a040' },
+    { char: '+', name: 'Temple/shrine',  color: '#c0a898' },
+    { char: 'x', name: 'Marker/sign',   color: '#e05050' },
+    { char: '?', name: 'Point of int.',  color: '#58b8d8' },
+  ]},
+];
+
+/**
+ * Creates a fresh empty layer object.
+ * @param {string} id   - 'terrain' | 'underground' | 'structures'
+ * @param {string} name - Display name (user-editable)
+ * @param {Array}  cats - Initial categories array (may be empty)
+ */
+function makeLayer(id, name, cats) {
+  const total = GRID_COLS * GRID_ROWS;
+  return {
+    id,
+    name,
+    visible: true,
+    categories: cats || [],
+    maps: Array.from({length: total}, () =>
+      Array.from({length: TILE_H}, () => Array(TILE_W).fill(' '))),
+    cellColors: {},
+  };
+}
+
+/**
+ * Rebuilds the maps arrays in all layers to match the current grid dimensions.
+ * Called after grid config changes. Existing data is discarded.
+ */
+function initLayerMaps() {
+  const total = GRID_COLS * GRID_ROWS;
+  for (const layer of layers) {
+    layer.maps = Array.from({length: total}, () =>
+      Array.from({length: TILE_H}, () => Array(TILE_W).fill(' ')));
+    layer.cellColors = {};
+  }
+}
+
+// ── Layer state ──
+let layers = [];          // [terrainLayer, undergroundLayer, structuresLayer]
+let activeLayerIdx = 0;   // 0=terrain, 1=underground, 2=structures
+
+/** Returns the currently active layer object. */
+function activeLayer() { return layers[activeLayerIdx]; }
+
+// ── Backward-compat shims ──
+// Existing code reads/writes `categories`, `maps`, and `cellColors` directly.
+// These are kept as simple let variables but always point to the active layer's
+// data. Call syncLayerRefs() after switching layers or loading a project to
+// re-point them. Direct writes (e.g. `maps = ...`) also update the active layer.
 let categories = [];
-// maps[mi]: TILE_H × TILE_W 2D array of single characters
-let maps = [];
-// cellColors: "mi,r,c" → hex color override (when a cell has a custom color)
+let maps       = [];
 let cellColors = {};
+
+/**
+ * Re-points the backward-compat shim variables to the active layer's data.
+ * Must be called after: layer switch, project load, new project, grid config reset.
+ */
+function syncLayerRefs() {
+  const layer = layers[activeLayerIdx];
+  if (!layer) return;
+  categories = layer.categories;
+  maps       = layer.maps;
+  cellColors = layer.cellColors;
+}
 
 // Active editor state
 let activeMap    = 0;       // currently focused tile index
@@ -1261,6 +2298,24 @@ let fillConn = 4;
 
 // _strokeUndoPushed: prevents double-push when dragging across cells in a single stroke
 let _strokeUndoPushed = false;
+
+// Top-level touch intent: 'pan' = scroll/select, 'paint' = draw
+let interactionMode = 'pan';
+
+// Pan gesture state
+let _panActive  = false;
+let _panStartX  = 0;
+let _panStartY  = 0;
+let _panOriginX = 0;
+let _panOriginY = 0;
+
+// Pinch-to-zoom state
+let _pinchActive  = false;
+let _pinchStartDist = 0;
+let _pinchStartScale = 1;
+let _zoomScale    = 1;      // current zoom level
+const ZOOM_MIN    = 0.25;
+const ZOOM_MAX    = 4.0;
 const undoStack = [];
 const redoStack = [];
 const MAX_UNDO  = 50;  // cap to avoid unbounded memory growth
@@ -1357,6 +2412,7 @@ function setFillConn(n) {
   fillConn = n;
   document.getElementById('fill4btn').classList.toggle('active', n === 4);
   document.getElementById('fill8btn').classList.toggle('active', n === 8);
+  updateSheetFillConn(n);
 }
 
 /* ════════════════════════════════════════════
@@ -1365,42 +2421,97 @@ function setFillConn(n) {
    .json file or auto-saved to localStorage (debounced, 900 ms).
 ════════════════════════════════════════════ */
 
-/** Serialises the full editor state to a plain JSON-safe object. */
+/** Serialises the full editor state to a plain JSON-safe object (v2 schema with layers). */
 function buildProjectJSON() {
   return {
-    version: 1,
+    version: 2,
     name: projectName,
     gridCols: GRID_COLS, gridRows: GRID_ROWS,
     tileW: TILE_W, tileH: TILE_H, cellPx: CELL_PX,
-    categories: JSON.parse(JSON.stringify(categories)),
-    maps: maps.map(tile => tile.map(row => row.join(''))),
-    cellColors: Object.assign({}, cellColors),
+    activeLayerIdx,
+    layers: layers.map(layer => ({
+      id:         layer.id,
+      name:       layer.name,
+      visible:    layer.visible,
+      categories: deepClone(layer.categories),
+      maps:       layer.maps.map(tile => tile.map(row => row.join(''))),
+      cellColors: Object.assign({}, layer.cellColors),
+    })),
     genPresets: deepClone(genPresets),
   };
 }
 
 /**
  * Applies a deserialized project object to editor state.
+ * Supports both v1 (legacy single-layer) and v2 (three-layer) schemas.
+ * v1 projects are auto-migrated: their data becomes the Terrain layer,
+ * and two empty structure layers (Underground, Structures) are created.
  * Returns true on success, false if the object is invalid.
  */
 function applyProjectJSON(s) {
-  if (!s || s.version !== 1) return false;
+  if (!s || (s.version !== 1 && s.version !== 2)) return false;
   projectName = s.name || 'imported project';
   GRID_COLS   = s.gridCols || 3;
   GRID_ROWS   = s.gridRows || 3;
   TILE_W      = s.tileW    || 18;
   TILE_H      = s.tileH    || 18;
   CELL_PX     = s.cellPx   || 22;
-  categories  = s.categories ? JSON.parse(JSON.stringify(s.categories)) : deepClone(DEFAULT_CATEGORIES);
-  cellColors  = s.cellColors ? Object.assign({}, s.cellColors) : {};
-  const total = GRID_COLS * GRID_ROWS;
-  maps = Array.from({length: total}, (_, i) => {
-    const saved = s.maps && s.maps[i];
-    if (saved) return saved.map(row => Array.from(row.padEnd(TILE_W, ' ')));
-    return Array.from({length: TILE_H}, () => Array(TILE_W).fill(' '));
-  });
-  activeMap = 0;
-  genPresets = Array.isArray(s.genPresets) ? deepClone(s.genPresets) : [];
+  activeMap   = 0;
+  genPresets  = Array.isArray(s.genPresets) ? deepClone(s.genPresets) : [];
+
+  if (s.version === 2 && Array.isArray(s.layers) && s.layers.length > 0) {
+    // ── v2: restore full layer array ──
+    const total = GRID_COLS * GRID_ROWS;
+    layers = s.layers.map(ld => ({
+      id:         ld.id || uid(),
+      name:       ld.name || 'Layer',
+      visible:    ld.visible !== false,
+      categories: ld.categories ? deepClone(ld.categories) : [],
+      maps:       Array.from({length: total}, (_, i) => {
+        const saved = ld.maps && ld.maps[i];
+        if (saved) return saved.map(row => Array.from(row.padEnd(TILE_W, ' ')));
+        return Array.from({length: TILE_H}, () => Array(TILE_W).fill(' '));
+      }),
+      cellColors: ld.cellColors ? Object.assign({}, ld.cellColors) : {},
+    }));
+    // Ensure we always have exactly 3 layers (pad if a saved file is missing one)
+    while (layers.length < 3) {
+      const defaults = [
+        { id: 'terrain',     name: 'Terrain',     cats: deepClone(DEFAULT_CATEGORIES) },
+        { id: 'underground', name: 'Underground',  cats: deepClone(UNDERGROUND_STARTER) },
+        { id: 'structures',  name: 'Structures',   cats: deepClone(STRUCTURES_STARTER) },
+      ];
+      layers.push(makeLayer(defaults[layers.length].id, defaults[layers.length].name, defaults[layers.length].cats));
+    }
+    activeLayerIdx = clamp(s.activeLayerIdx || 0, 0, layers.length - 1);
+    syncLayerRefs();
+
+  } else {
+    // ── v1: auto-migrate to three-layer system ──
+    // The v1 data (categories, maps, cellColors) becomes the Terrain layer.
+    // Underground and Structures layers start empty with their starter palettes.
+    const total = GRID_COLS * GRID_ROWS;
+    const terrainMaps = Array.from({length: total}, (_, i) => {
+      const saved = s.maps && s.maps[i];
+      if (saved) return saved.map(row => Array.from(row.padEnd(TILE_W, ' ')));
+      return Array.from({length: TILE_H}, () => Array(TILE_W).fill(' '));
+    });
+    layers = [
+      {
+        id:         'terrain',
+        name:       'Terrain',
+        visible:    true,
+        categories: s.categories ? deepClone(s.categories) : deepClone(DEFAULT_CATEGORIES),
+        maps:       terrainMaps,
+        cellColors: s.cellColors ? Object.assign({}, s.cellColors) : {},
+      },
+      makeLayer('underground', 'Underground', deepClone(UNDERGROUND_STARTER)),
+      makeLayer('structures',  'Structures',  deepClone(STRUCTURES_STARTER)),
+    ];
+    activeLayerIdx = 0;
+    syncLayerRefs();
+  }
+
   return true;
 }
 
@@ -1439,15 +2550,17 @@ function confirmNewProject() {
   const name = document.getElementById('new-proj-name').value.trim() || 'new-project';
   closeModal('modal-new');
   projectName = name;
-  categories  = deepClone(DEFAULT_CATEGORIES);
   GRID_COLS = 3; GRID_ROWS = 3; TILE_W = 18; TILE_H = 18; CELL_PX = 22;
-  maps       = Array.from({length: 9}, () => Array.from({length: 18}, () => Array(18).fill(' ')));
-  cellColors = {};
   activeMap  = 0;
+  // Re-initialize the full three-layer system with default palettes and empty maps
+  initLayers();
   clearSelection();
   buildGrid();
   buildPalette();
+  buildLayerPanel();
   setProjectNameUI();
+  updateToolbarSymbol();
+  updateToolbarMode();
   scheduleAutosave();
   toast(`Project "${name}" created`);
 }
@@ -1477,6 +2590,8 @@ async function loadProjectFile(event) {
     buildGrid();
     buildPalette();
     setProjectNameUI();
+    updateToolbarSymbol();
+    updateToolbarMode();
     scheduleAutosave();
     toast(`Opened "${projectName}"`);
   } catch(err) {
@@ -1500,10 +2615,25 @@ function exportMaps() {
 
 /** Resets maps and cellColors to empty state for current grid dimensions. */
 function initMaps() {
+  // Reset only the active layer's maps (backward compat for grid config reset)
   maps = Array.from({length: GRID_COLS * GRID_ROWS}, () =>
     Array.from({length: TILE_H}, () => Array(TILE_W).fill(' ')));
   cellColors = {};
   activeMap  = 0;
+}
+
+/**
+ * Initializes the three-layer system from scratch.
+ * Called on first boot (no saved data) and on new project.
+ */
+function initLayers() {
+  layers = [
+    makeLayer('terrain',     'Terrain',     deepClone(DEFAULT_CATEGORIES)),
+    makeLayer('underground', 'Underground', deepClone(UNDERGROUND_STARTER)),
+    makeLayer('structures',  'Structures',  deepClone(STRUCTURES_STARTER)),
+  ];
+  activeLayerIdx = 0;
+  syncLayerRefs();
 }
 
 /**
@@ -1519,13 +2649,20 @@ function boot() {
   } catch(e) { /* localStorage unavailable (e.g. file://) — start fresh */ }
 
   if (!restored) {
-    categories = deepClone(DEFAULT_CATEGORIES);
-    initMaps();
+    // Fresh start — initialize the three-layer system
+    initLayers();
   }
+
+  // Apply the user's chosen interface mode (desktop sidebar vs mobile toolbar)
+  // as early as possible so the first render uses the correct chrome.
+  initUIMode();
 
   buildGrid();
   buildPalette();
+  buildLayerPanel();
   setProjectNameUI();
+  updateToolbarSymbol();
+  updateToolbarMode();
 
   if (restored) {
     setAutosaveBadge('restored from autosave');
@@ -1571,6 +2708,15 @@ function buildGrid() {
 
   // Clicking the canvas background (outside any tile) deselects the active map
   const wrap = document.getElementById('canvas-wrap');
+
+  // Mouse-wheel zoom (desktop)
+  wrap.addEventListener('wheel', e => {
+    if (!e.ctrlKey && !e.metaKey) return; // only Ctrl+scroll
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    applyZoom(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, _zoomScale * delta)));
+  }, { passive: false });
+
   wrap.addEventListener('mousedown', e => {
     if (e.target === wrap || e.target === wg) {
       clearSelection();
@@ -1578,6 +2724,9 @@ function buildGrid() {
       document.querySelectorAll('.map-tile').forEach(t => t.classList.remove('active-map'));
     }
   });
+
+  // Touch pan/pinch handled by document-level listeners below buildGrid
+
 }
 
 /* ════════════════════════════════════════════
@@ -1653,6 +2802,7 @@ function refreshActiveBtns() {
     btn.classList.toggle('active', ch === currentChar);
   });
   updateSelIndicator();
+  updateToolbarSymbol();
 }
 
 /** Updates the "active symbol" indicator in the sidebar header. */
@@ -1692,6 +2842,22 @@ function onCellDown(e) {
     return;
   }
 
+  // Road / path pick mode — same mechanism as river pick
+  if (roadPickPending) {
+    const mr = Math.floor(mi / GRID_COLS), mc = mi % GRID_COLS;
+    const wx = mc * TILE_W + c;
+    const wy = mr * TILE_H + r;
+    finishRoadPick(wx, wy);
+    toast(`Road point set: (${wx}, ${wy})`);
+    return;
+  }
+
+  // Pan mode: only activate the tapped map, no painting or selection
+  if (interactionMode === 'pan') {
+    if (mi !== activeMap) selectMap(mi);
+    return;
+  }
+
   if (mode === 'select') {
     if (mi !== activeMap) selectMap(mi);
     clearSelection();
@@ -1712,6 +2878,7 @@ function onCellDown(e) {
 function onCellEnter(e) {
   const cell = e.target;
   if (!cell.dataset.mi) return;
+  if (interactionMode === 'pan') return; // pan mode: no painting or drag
   const mi = parseInt(cell.dataset.mi);
   const r  = parseInt(cell.dataset.r);
   const c  = parseInt(cell.dataset.c);
@@ -1828,6 +2995,7 @@ function setMode(m) {
     if (el) el.classList.toggle('active', nm === m);
   });
   document.getElementById('world-grid').style.cursor = m === 'select' ? 'default' : 'crosshair';
+  updateToolbarMode();
 }
 
 /* ════════════════════════════════════════════
@@ -2304,6 +3472,294 @@ function execPaste(pmode) {
 }
 
 /* ════════════════════════════════════════════
+   ZOOM
+════════════════════════════════════════════ */
+
+/**
+ * Applies a zoom scale to the world-grid via CSS transform.
+ * Keeps the grid anchored to the top-left of canvas-wrap by adjusting
+ * the transform-origin and preserving scroll position proportionally.
+ */
+function applyZoom(scale) {
+  const wrap = document.getElementById('canvas-wrap');
+  const wg   = document.getElementById('world-grid');
+  if (!wrap || !wg) return;
+
+  // Preserve the visible center point across the zoom
+  const cx = (wrap.scrollLeft + wrap.clientWidth  / 2) / _zoomScale;
+  const cy = (wrap.scrollTop  + wrap.clientHeight / 2) / _zoomScale;
+
+  _zoomScale = scale;
+  wg.style.transformOrigin = '0 0';
+  wg.style.transform = `scale(${scale})`;
+
+  // Re-center scroll on the same world point
+  wrap.scrollLeft = cx * scale - wrap.clientWidth  / 2;
+  wrap.scrollTop  = cy * scale - wrap.clientHeight / 2;
+
+  // Update zoom indicator if present
+  const lbl = document.getElementById('zoom-label');
+  if (lbl) lbl.textContent = Math.round(scale * 100) + '%';
+}
+
+/* ════════════════════════════════════════════
+   INTERACTION MODE
+════════════════════════════════════════════ */
+
+function setInteractionMode(m) {
+  interactionMode = m;
+  const panBtn   = document.getElementById('imode-pan');
+  const paintBtn = document.getElementById('imode-paint');
+  if (panBtn)   panBtn.classList.toggle('active',   m === 'pan');
+  if (paintBtn) paintBtn.classList.toggle('active', m === 'paint');
+  const wg = document.getElementById('world-grid');
+  if (wg) wg.style.cursor = m === 'pan' ? 'grab' : (mode === 'select' ? 'default' : 'crosshair');
+}
+
+/* ════════════════════════════════════════════
+   TOUCH CELL HANDLERS
+════════════════════════════════════════════ */
+
+/** Resolves a Touch to the .cell element underneath it, or null. */
+function cellFromTouch(touch) {
+  const el = document.elementFromPoint(touch.clientX, touch.clientY);
+  return (el && el.classList.contains('cell')) ? el : null;
+}
+
+/**
+ * Returns true if a touch point is within the canvas-wrap bounds.
+ */
+function touchInWrap(touch) {
+  const wrap = document.getElementById('canvas-wrap');
+  if (!wrap) return false;
+  const r = wrap.getBoundingClientRect();
+  return touch.clientX >= r.left && touch.clientX <= r.right &&
+         touch.clientY >= r.top  && touch.clientY <= r.bottom;
+}
+
+/**
+ * Unified document-level touch handler.
+ * Handles all three gestures from one place to avoid event-bubbling conflicts:
+ *   • 2-finger pinch  → zoom
+ *   • 1-finger pan mode → scroll canvas-wrap
+ *   • 1-finger paint mode → paint / erase / fill / select cells
+ * Using document-level listeners means the touch target doesn't matter —
+ * we always use elementFromPoint to find what's under the finger.
+ */
+function onDocTouchStart(e) {
+  // Don't interfere with touches inside open bottom sheets or modals
+  if (e.target.closest('.bottom-sheet')) return;
+  if (e.target.closest('.modal')) return;
+
+  const wrap = document.getElementById('canvas-wrap');
+  if (!wrap) return;
+
+  // Only handle touches that start within the canvas area
+  if (!touchInWrap(e.touches[0])) return;
+
+  // ── Pinch: 2 fingers ──
+  if (e.touches.length === 2) {
+    e.preventDefault();
+    _panActive      = false;
+    _pinchActive    = true;
+    _pinchStartDist  = Math.hypot(
+      e.touches[0].clientX - e.touches[1].clientX,
+      e.touches[0].clientY - e.touches[1].clientY);
+    _pinchStartScale = _zoomScale;
+    return;
+  }
+
+  if (e.touches.length !== 1) return;
+  _pinchActive = false;
+  const touch = e.touches[0];
+  const cell  = cellFromTouch(touch);
+
+  // ── River-pick: intercepts all modes ──
+  if (riverPickPending && cell) {
+    e.preventDefault();
+    const mi = parseInt(cell.dataset.mi);
+    const r  = parseInt(cell.dataset.r);
+    const c  = parseInt(cell.dataset.c);
+    const mr = Math.floor(mi / GRID_COLS), mc = mi % GRID_COLS;
+    finishPick(mc * TILE_W + c, mr * TILE_H + r);
+    toast(`Point set: (${mc * TILE_W + c}, ${mr * TILE_H + r})`);
+    return;
+  }
+
+  // ── Pan mode ──
+  if (interactionMode === 'pan') {
+    // Tapping a cell activates its map
+    if (cell) {
+      const mi = parseInt(cell.dataset.mi);
+      if (!isNaN(mi) && mi !== activeMap) selectMap(mi);
+    } else {
+      // Tapping bare canvas: deselect
+      clearSelection();
+      activeMap = -1;
+      document.querySelectorAll('.map-tile').forEach(t => t.classList.remove('active-map'));
+    }
+    _panActive  = true;
+    _panStartX  = touch.clientX;
+    _panStartY  = touch.clientY;
+    _panOriginX = wrap.scrollLeft;
+    _panOriginY = wrap.scrollTop;
+    return; // no preventDefault — allow native momentum if pan doesn't move
+  }
+
+  // ── Paint mode ──
+  if (cell) {
+    e.preventDefault();
+    onCellDown({ preventDefault: () => {}, target: cell });
+  }
+}
+
+function onDocTouchMove(e) {
+  // Don't interfere with scrolling inside open bottom sheets or modals
+  if (e.target.closest('.bottom-sheet')) return;
+  if (e.target.closest('.modal')) return;
+
+  const wrap = document.getElementById('canvas-wrap');
+  if (!wrap) return;
+
+  // ── Pinch zoom ──
+  if (_pinchActive && e.touches.length === 2) {
+    e.preventDefault();
+    const dist = Math.hypot(
+      e.touches[0].clientX - e.touches[1].clientX,
+      e.touches[0].clientY - e.touches[1].clientY);
+    applyZoom(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN,
+      _pinchStartScale * (dist / _pinchStartDist))));
+    return;
+  }
+
+  // ── Pan scroll ──
+  if (_panActive && interactionMode === 'pan') {
+    e.preventDefault();
+    const touch = e.touches[0];
+    wrap.scrollLeft = _panOriginX - (touch.clientX - _panStartX);
+    wrap.scrollTop  = _panOriginY - (touch.clientY - _panStartY);
+    return;
+  }
+
+  // ── Paint stroke ──
+  if (interactionMode === 'paint' && !_pinchActive && e.touches.length === 1) {
+    if (!touchInWrap(e.touches[0])) return;
+    e.preventDefault();
+    const cell = cellFromTouch(e.touches[0]);
+    if (cell) onCellEnter({ target: cell });
+  }
+}
+
+function onDocTouchEnd() {
+  _panActive   = false;
+  _pinchActive = false;
+  isPainting   = false;
+  isSelecting  = false;
+  _strokeUndoPushed = false;
+}
+
+/* ════════════════════════════════════════════
+   BOTTOM SHEETS
+════════════════════════════════════════════ */
+
+function openSheet(id) {
+  document.getElementById(id).classList.add('open');
+  if (id === 'sheet-palette') buildPaletteSheet();
+}
+
+function closeSheet(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+function handleSheetBgClick(e, id) {
+  // Backdrop close now handled by .sheet-close-strip
+  if (e.target === document.getElementById(id)) closeSheet(id);
+}
+
+/** Builds the symbol grid inside the palette sheet from current categories. */
+function buildPaletteSheet() {
+  const body = document.getElementById('sheet-palette-body');
+  if (!body) return;
+  body.innerHTML = '';
+  for (const cat of categories) {
+    if (!cat.symbols.length) continue;
+    const block = document.createElement('div');
+    block.className = 'sheet-cat-block';
+
+    const hdr = document.createElement('div');
+    hdr.className = 'sheet-cat-hdr';
+    const dot = document.createElement('span');
+    dot.className = 'sheet-cat-dot'; dot.style.background = cat.color;
+    const lbl = document.createElement('span');
+    lbl.className = 'sheet-cat-lbl'; lbl.textContent = cat.name;
+    hdr.append(dot, lbl);
+
+    const grid = document.createElement('div');
+    grid.className = 'sheet-sym-grid';
+    cat.symbols.forEach(sym => {
+      const btn = document.createElement('button');
+      btn.className = 'sheet-sym-btn' + (sym.char === currentChar ? ' active' : '');
+      btn.style.color = sym.color || cat.color || 'var(--text)';
+      const charSpan = document.createElement('span');
+      charSpan.textContent = sym.char === ' ' ? '·' : sym.char;
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'sym-label';
+      nameSpan.textContent = sym.name;
+      btn.append(charSpan, nameSpan);
+      btn.onclick = () => {
+        currentChar  = sym.char;
+        currentColor = sym.color || cat.color || '';
+        refreshActiveBtns();   // updates sidebar + toolbar indicator
+        closeSheet('sheet-palette');
+      };
+      grid.appendChild(btn);
+    });
+
+    block.append(hdr, grid);
+    body.appendChild(block);
+  }
+}
+
+/** Updates the toolbar symbol button and sheet indicator to match currentChar. */
+function updateToolbarSymbol() {
+  const btn = document.getElementById('tb-sym-btn');
+  if (btn) {
+    btn.textContent = currentChar === ' ' ? '·' : currentChar;
+    btn.style.color = currentColor || 'var(--accent)';
+    btn.style.borderColor = currentColor || 'var(--accent)';
+  }
+  const sheetChar = document.getElementById('sheet-sel-char');
+  const sheetName = document.getElementById('sheet-sel-name');
+  if (sheetChar) {
+    sheetChar.textContent = currentChar === ' ' ? '·' : currentChar;
+    sheetChar.style.color = currentColor || 'var(--accent)';
+    sheetChar.style.borderColor = currentColor || 'var(--accent)';
+  }
+  if (sheetName) {
+    let name = '';
+    for (const cat of categories) {
+      const s = cat.symbols.find(s => s.char === currentChar);
+      if (s) { name = s.name; break; }
+    }
+    sheetName.textContent = name;
+  }
+}
+
+/** Syncs the toolbar brush-mode buttons with the current mode. */
+function updateToolbarMode() {
+  ['paint','erase','fill','select'].forEach(m => {
+    const btn = document.getElementById('tb-' + m);
+    if (btn) btn.classList.toggle('active', m === mode);
+  });
+}
+
+/** Syncs the tools-sheet fill connectivity buttons. */
+function updateSheetFillConn(n) {
+  document.getElementById('sheet-fill4')?.classList.toggle('active', n === 4);
+  document.getElementById('sheet-fill8')?.classList.toggle('active', n === 8);
+}
+
+/* ════════════════════════════════════════════
    KEYBOARD SHORTCUTS
 ════════════════════════════════════════════ */
 document.addEventListener('keydown', e => {
@@ -2357,8 +3813,10 @@ function openModal(id)  { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
 // Close any modal by clicking outside it (on the semi-transparent backdrop)
-document.querySelectorAll('.modal-bg').forEach(bg =>
-  bg.addEventListener('mousedown', e => { if (e.target === bg) bg.classList.remove('open'); }));
+document.querySelectorAll('.modal-bg').forEach(bg => {
+  bg.addEventListener('mousedown', e => { if (e.target === bg) bg.classList.remove('open'); });
+  bg.addEventListener('touchstart', e => { if (e.target === bg) bg.classList.remove('open'); }, { passive: true });
+});
 
 /** Shows a brief dismissable notification at the bottom of the screen. */
 function toast(msg) {
@@ -2368,8 +3826,131 @@ function toast(msg) {
   el._t = setTimeout(() => el.classList.remove('show'), 2400);
 }
 
+/* ════════════════════════════════════════════
+   UI MODE SWITCH (Desktop / Mobile Interface)
+   Supports:
+     • ?ui=desktop or ?ui=mobile URL flag (the "flag in the HTML file")
+     • localStorage persistence ("terrascii-ui-mode")
+     • Auto-detect fallback (viewport > 900 px → desktop)
+   Applies body.ui-desktop or body.ui-mobile which the CSS rules
+   (added earlier) use to force the classic sidebar or the mobile
+   bottom-toolbar + sheets respectively.
+════════════════════════════════════════════ */
+
+let _currentUIMode = null;
+
+/** Returns the effective UI mode, checking URL → localStorage → auto-detect. */
+function getUIModePreference() {
+  const params = new URLSearchParams(location.search);
+  const urlMode = params.get('ui');
+  if (urlMode === 'desktop' || urlMode === 'mobile') return urlMode;
+
+  try {
+    const saved = localStorage.getItem('terrascii-ui-mode');
+    if (saved === 'desktop' || saved === 'mobile') return saved;
+  } catch (e) { /* localStorage may be blocked (file://) */ }
+
+  // Auto-detect: wide viewports get the classic desktop sidebar by default
+  return window.innerWidth > 900 ? 'desktop' : 'mobile';
+}
+
+/** Applies (or re-applies) the chosen interface mode via body class. */
+function applyUIMode(mode) {
+  document.body.classList.remove('ui-desktop', 'ui-mobile');
+  document.body.classList.add('ui-' + mode);
+  _currentUIMode = mode;
+
+  // Keep toggle buttons in sync if they exist
+  const wrap = document.getElementById('ui-mode-switch');
+  if (wrap) {
+    wrap.querySelectorAll('button').forEach(btn => btn.classList.remove('active'));
+    const target = Array.from(wrap.querySelectorAll('button')).find(b =>
+      (mode === 'desktop' && b.textContent.includes('🖥')) ||
+      (mode === 'mobile'  && b.textContent.includes('📱'))
+    );
+    if (target) target.classList.add('active');
+  }
+
+  // When forcing desktop mode, make sure the full symbol palette grid
+  // is rendered inside the sidebar (the mobile design only populates the
+  // bottom sheet by default). This guarantees the palette is always
+  // expanded and usable in the classic desktop sidebar.
+  if (mode === 'desktop') {
+    // In desktop mode, painting is the primary interaction (not panning).
+    // Force interactionMode to 'paint' so brush/fill/erase tools work
+    // immediately without the user having to click a mode button first.
+    interactionMode = 'paint';
+    // Also switch the brush mode to 'paint' via setMode() so the sidebar
+    // buttons and cursor are updated correctly. setMode is defined later
+    // in the script but applyUIMode is only called after boot(), so it
+    // is always available by the time this runs.
+    if (typeof setMode === 'function') {
+      setMode('paint');
+    }
+
+    const paletteArea = document.getElementById('palette-area');
+    if (paletteArea) {
+      // Rebuild only if it's currently empty (cheap guard)
+      if (paletteArea.children.length === 0) {
+        buildPalette();
+      }
+    }
+  }
+}
+
+/**
+ * Public setter used by the toggle buttons.
+ * Persists the choice (unless opts.persist === false).
+ */
+function setUIMode(mode, opts = {}) {
+  applyUIMode(mode);
+  if (opts.persist !== false) {
+    try { localStorage.setItem('terrascii-ui-mode', mode); } catch (e) {}
+  }
+}
+
+/** Creates the small header toggle (🖥 / 📱) if it doesn't already exist. */
+function createUIModeSwitch() {
+  const header = document.getElementById('header');
+  if (!header || document.getElementById('ui-mode-switch')) return;
+
+  const wrap = document.createElement('div');
+  wrap.id = 'ui-mode-switch';
+  wrap.className = 'ui-switch';
+
+  const btnDesktop = document.createElement('button');
+  btnDesktop.textContent = '🖥';
+  btnDesktop.title = 'Desktop interface — classic sidebar + keyboard/mouse controls';
+  btnDesktop.onclick = () => setUIMode('desktop');
+
+  const btnMobile = document.createElement('button');
+  btnMobile.textContent = '📱';
+  btnMobile.title = 'Mobile interface — bottom toolbar + touch sheets';
+  btnMobile.onclick = () => setUIMode('mobile');
+
+  wrap.append(btnDesktop, btnMobile);
+
+  // Place it nicely on the right side of the header (before coord bar)
+  const coord = document.getElementById('coord-bar');
+  if (coord && coord.parentNode === header) {
+    header.insertBefore(wrap, coord);
+  } else {
+    header.appendChild(wrap);
+  }
+}
+
+/** Initializes (or re-initializes) the UI mode on boot / after preference change. */
+function initUIMode() {
+  const mode = getUIModePreference();
+  applyUIMode(mode);
+  createUIModeSwitch();
+}
+
 // Release paint/select drag state when mouse is released anywhere in the document
 document.addEventListener('mouseup', () => { isPainting = false; isSelecting = false; _strokeUndoPushed = false; });
+document.addEventListener('touchstart', onDocTouchStart, { passive: false });
+document.addEventListener('touchmove',  onDocTouchMove,  { passive: false });
+document.addEventListener('touchend',   onDocTouchEnd);
 // Suppress the context menu on right-click over cells (reserved for future use)
 document.addEventListener('contextmenu', e => {
   if (e.target.classList.contains('cell')) e.preventDefault();
@@ -2796,11 +4377,19 @@ async function importPresets(event) {
 function setGenTab(tab) {
   genTab = tab;
   genMode = tab === 'water' ? 'water' : tab;
-  ['weighted','perlin','water','presets'].forEach(t => {
-    document.getElementById(`gen-tab-${t}`).classList.toggle('active', t === tab);
-    document.getElementById(`gen-panel-${t}`).classList.toggle('active', t === tab);
+  ['weighted','perlin','water','roads','presets'].forEach(t => {
+    const btn = document.getElementById(`gen-tab-${t}`);
+    const panel = document.getElementById(`gen-panel-${t}`);
+    const isActive = t === tab;
+    if (btn) {
+      btn.classList.toggle('active', isActive);
+      btn.style.borderBottomColor = isActive ? 'var(--accent)' : 'transparent';
+      btn.style.color = isActive ? 'var(--accent)' : 'var(--text2)';
+    }
+    if (panel) panel.classList.toggle('active', isActive);
   });
   if (tab === 'presets') buildPresetList();
+  if (tab === 'roads')   buildRoadsTab();
 }
 
 function openGenModal() {
@@ -3578,8 +5167,9 @@ function randomNoiseBands() {
 function runGeneration() {
   if (genTiles.size === 0) { toast('No tiles selected'); return; }
 
-  // Water tab has its own generator — dispatch and exit
+  // Water and Roads tabs have their own generators — dispatch and exit
   if (genTab === 'water') { runWaterGen(); closeModal('modal-gen'); return; }
+  if (genTab === 'roads') { runRoadsGen(); return; }
 
   const coherence = genCoherence;
   // Collect all symbols from checked categories (water excluded)
@@ -3677,6 +5267,468 @@ function runGeneration() {
   scheduleAutosave();
   closeModal('modal-gen');
   toast(`Generated ${genTiles.size} tile${genTiles.size > 1 ? 's' : ''}`);
+}
+
+/* ════════════════════════════════════════════
+   ROADS & PATHS GENERATION
+   Generates roads and paths on the active structure layer (Underground or Structures).
+   Reuses the river pathfinding algorithm with user-chosen symbols.
+   The Terrain layer is never modified by this generator.
+════════════════════════════════════════════ */
+
+// Road/path pairs — same structure as riverPairs but stored separately
+// so they don't interfere with the Water tab's river pairs.
+// Each: { src: {wx,wy}|null, dst: {wx,wy}|null, type: 'road'|'path' }
+let roadPairs = [];
+
+// roadPickPending: { pairIdx, field } | null — same pick mechanism as rivers
+let roadPickPending = null;
+
+/**
+ * Populates the Roads tab UI: updates the active layer badge,
+ * populates the symbol selects from the active layer's palette,
+ * and rebuilds the road pair list.
+ */
+function buildRoadsTab() {
+  // Update active layer badge
+  const badge = document.getElementById('roads-layer-badge');
+  if (badge) {
+    const layer = activeLayer();
+    badge.textContent = layer ? layer.name : '—';
+    const colors = { terrain: 'var(--accent)', underground: '#b070f0', structures: 'var(--accent2)' };
+    badge.style.color = colors[layer?.id] || 'var(--text2)';
+  }
+
+  // Populate symbol selects from the active layer's palette
+  const allSyms = (activeLayer()?.categories ?? [])
+    .flatMap(cat => cat.symbols.filter(s => s.char !== ' '));
+
+  ['roads-sym-h', 'roads-sym-v', 'roads-sym-path'].forEach((id, i) => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    const prev = sel.value;
+    sel.innerHTML = '';
+    allSyms.forEach(sym => {
+      const opt = document.createElement('option');
+      opt.value = sym.char;
+      opt.textContent = `${sym.char}  ${sym.name}`;
+      sel.appendChild(opt);
+    });
+    // Sensible defaults: horiz road, vert road, path
+    const defaults = ['═', '║', '·'];
+    sel.value = prev || defaults[i];
+    if (!sel.value && sel.options.length) sel.selectedIndex = 0;
+  });
+
+  buildRoadPairList();
+  refreshRoadHighlights();
+}
+
+/** Adds a new road or path pair to the list. */
+function addRoadPair(type) {
+  roadPairs.push({ src: null, dst: null, type: type || 'road' });
+  buildRoadPairList();
+}
+
+/** Rebuilds the road pair list UI in the Roads panel. */
+function buildRoadPairList() {
+  const el = document.getElementById('road-pair-list');
+  if (!el) return;
+  el.innerHTML = '';
+  if (roadPairs.length === 0) {
+    el.innerHTML = '<div class="muted" style="font-size:10px;padding:4px 0">No routes defined. Use + Road or + Path above.</div>';
+    return;
+  }
+  roadPairs.forEach((pair, i) => {
+    const isPath = pair.type === 'path';
+    const row = document.createElement('div');
+    row.className = 'river-pair-row'; // reuse river pair row styles
+
+    const badge = document.createElement('span');
+    badge.style.cssText = `font-size:9px;font-weight:700;padding:1px 4px;border-radius:2px;flex-shrink:0;
+      background:${isPath ? '#1a1a0e' : '#0e1a0e'};
+      color:${isPath ? 'var(--accent2)' : 'var(--accent)'};
+      border:1px solid ${isPath ? 'var(--accent2)' : 'var(--accent)'};`;
+    badge.textContent = isPath ? 'P' : 'R';
+    badge.title = isPath ? 'Path' : 'Road';
+
+    const srcBtn = document.createElement('button');
+    srcBtn.className = 'river-coord-btn' + (pair.src ? ' set' : '');
+    srcBtn.textContent = pair.src ? `(${pair.src.wx},${pair.src.wy})` : 'Set Src';
+    if (roadPickPending?.pairIdx === i && roadPickPending?.field === 'src') srcBtn.classList.add('picking');
+    srcBtn.onclick = () => startRoadPick(i, 'src');
+
+    const arrow = document.createElement('span');
+    arrow.className = 'river-arrow';
+    arrow.textContent = '→';
+
+    const dstBtn = document.createElement('button');
+    dstBtn.className = 'river-coord-btn' + (pair.dst ? ' set' : '');
+    dstBtn.textContent = pair.dst ? `(${pair.dst.wx},${pair.dst.wy})` : 'Set Dst';
+    if (roadPickPending?.pairIdx === i && roadPickPending?.field === 'dst') dstBtn.classList.add('picking');
+    dstBtn.onclick = () => startRoadPick(i, 'dst');
+
+    const spacer = document.createElement('span');
+    spacer.style.flex = '1';
+
+    const del = document.createElement('button');
+    del.className = 'sbtn red';
+    del.textContent = '✕';
+    del.style.padding = '3px 6px';
+    del.onclick = () => {
+      roadPairs.splice(i, 1);
+      roadPickPending = null;
+      buildRoadPairList();
+      refreshRoadHighlights();
+    };
+
+    row.append(badge, srcBtn, arrow, dstBtn, spacer, del);
+    el.appendChild(row);
+  });
+}
+
+/** Refreshes road source/destination cell highlights. */
+function refreshRoadHighlights() {
+  document.querySelectorAll('.cell.river-src, .cell.river-dst').forEach(c => {
+    c.classList.remove('river-src', 'river-dst');
+  });
+  roadPairs.forEach(pair => {
+    if (pair.src) {
+      const info = worldGet(pair.src.wx, pair.src.wy);
+      if (info) {
+        const cell = document.querySelector(`.cell[data-mi="${info.mi}"][data-r="${info.r}"][data-c="${info.c}"]`);
+        if (cell) cell.classList.add('river-src');
+      }
+    }
+    if (pair.dst) {
+      const info = worldGet(pair.dst.wx, pair.dst.wy);
+      if (info) {
+        const cell = document.querySelector(`.cell[data-mi="${info.mi}"][data-r="${info.r}"][data-c="${info.c}"]`);
+        if (cell) cell.classList.add('river-dst');
+      }
+    }
+  });
+}
+
+/** Enters road coordinate pick mode. */
+function startRoadPick(pairIdx, field) {
+  if (roadPickPending?.pairIdx === pairIdx && roadPickPending?.field === field) {
+    roadPickPending = null;
+    buildRoadPairList();
+    return;
+  }
+  roadPickPending = { pairIdx, field };
+  buildRoadPairList();
+  const modal = document.getElementById('modal-gen');
+  modal.style.pointerEvents = 'none';
+  modal.style.opacity = '0.35';
+  toast('Click a cell on the map to set the road point');
+}
+
+/** Completes a road coordinate pick. */
+function finishRoadPick(wx, wy) {
+  if (!roadPickPending) return false;
+  const { pairIdx, field } = roadPickPending;
+  if (roadPairs[pairIdx]) roadPairs[pairIdx][field] = { wx, wy };
+  roadPickPending = null;
+  const modal = document.getElementById('modal-gen');
+  modal.style.pointerEvents = '';
+  modal.style.opacity = '';
+  buildRoadPairList();
+  refreshRoadHighlights();
+  return true;
+}
+
+/**
+ * Generates roads and paths on the active structure layer.
+ * Uses the same noise-guided pathfinding as rivers but writes to the
+ * active layer's maps[] instead of the terrain layer.
+ * The Terrain layer is never touched.
+ */
+function runRoadsGen() {
+  // Guard: refuse to run on the terrain layer
+  if (activeLayerIdx === 0) {
+    toast('Switch to Underground or Structures layer first');
+    return;
+  }
+
+  const validPairs = roadPairs.filter(p => p.src && p.dst);
+  if (validPairs.length === 0) { toast('No road routes defined'); return; }
+
+  pushUndo();
+
+  const symH    = document.getElementById('roads-sym-h')?.value    || '═';
+  const symV    = document.getElementById('roads-sym-v')?.value    || '║';
+  const symPath = document.getElementById('roads-sym-path')?.value || '·';
+  const meander = parseInt(document.getElementById('roads-meander')?.value) || 2;
+  const seed    = parseInt(document.getElementById('roads-seed')?.value)    || 99;
+
+  const worldW = GRID_COLS * TILE_W;
+  const worldH = GRID_ROWS * TILE_H;
+
+  const mNoise  = makePerlin(seed + 1);
+  const mNoise2 = makePerlin(seed + 7);
+  const NS = 0.12;
+
+  // Helper: write to the active layer's maps (not the terrain layer)
+  function roadSet(wx, wy, ch) {
+    const tileC = Math.floor(wx / TILE_W);
+    const tileR = Math.floor(wy / TILE_H);
+    if (tileC < 0 || tileC >= GRID_COLS || tileR < 0 || tileR >= GRID_ROWS) return;
+    const mi = tileR * GRID_COLS + tileC;
+    const r  = wy - tileR * TILE_H;
+    const c  = wx - tileC * TILE_W;
+    // Write to the active layer directly (bypasses the backward-compat proxy)
+    layers[activeLayerIdx].maps[mi][r][c] = ch;
+    delete layers[activeLayerIdx].cellColors[`${mi},${r},${c}`];
+  }
+
+  validPairs.forEach(pair => {
+    const sx = pair.src.wx, sy = pair.src.wy;
+    const ex = pair.dst.wx, ey = pair.dst.wy;
+    const isPath = pair.type === 'path';
+    let wx = sx, wy = sy;
+    let sDx = 0.0, sDy = 1.0;
+    let horizRun = 0;
+    const maxLen = (worldW + worldH) * 2;
+    const destPull = 0.35;
+    const recentSteps = [];
+    const MEMORY = 4;
+
+    for (let step = 0; step < maxLen; step++) {
+      if (wx < 0 || wx >= worldW || wy < 0 || wy >= worldH) break;
+
+      // Symbol: paths use the path symbol, roads use horiz/vert
+      let sym;
+      if (isPath) {
+        sym = symPath;
+      } else {
+        const isH = Math.abs(sDx) > Math.abs(sDy) * 0.6;
+        sym = isH ? symH : symV;
+      }
+      roadSet(wx, wy, sym);
+
+      recentSteps.push(`${wx},${wy}`);
+      if (recentSteps.length > MEMORY) recentSteps.shift();
+
+      if (wx === ex && wy === ey) break;
+
+      const toDx = ex - wx, toDy = ey - wy;
+      const toDist = Math.sqrt(toDx * toDx + toDy * toDy);
+      const normToDx = toDist > 0 ? toDx / toDist : 0;
+      const normToDy = toDist > 0 ? toDy / toDist : 0;
+
+      const pullStrength = Math.min(0.9, destPull + (1 - Math.min(toDist, 20) / 20) * 0.5);
+      const hNoise = mNoise(wx * NS, wy * NS) * 2 - 1;
+      const vNoise = mNoise2(wx * NS, wy * NS);
+      const blendedDx = hNoise * (meander / 10) * (1 - pullStrength) + normToDx * pullStrength;
+      const blendedDy = (vNoise * 0.3 + 0.4) * (1 - pullStrength) + normToDy * pullStrength;
+
+      let ddx = 0, ddy = 0;
+      if (isPath) {
+        // Paths can move diagonally
+        ddx = blendedDx >= 0 ? 1 : -1;
+        ddy = normToDy >= 0 ? 1 : -1;
+      } else if (horizRun >= 4) {
+        ddy = normToDy >= 0 ? 1 : -1; horizRun = 0;
+      } else if (Math.abs(blendedDx) > Math.abs(blendedDy) * 0.8) {
+        ddx = blendedDx > 0 ? 1 : -1; ddy = 0; horizRun++;
+      } else {
+        ddy = blendedDy >= 0 ? 1 : -1;
+        if (Math.abs(blendedDx) > 0.25) ddx = blendedDx > 0 ? 1 : -1;
+        horizRun = 0;
+      }
+
+      const nwx = clamp(wx + ddx, 0, worldW - 1);
+      const nwy = clamp(wy + ddy, 0, worldH - 1);
+      if (recentSteps.includes(`${nwx},${nwy}`)) {
+        const altDdx = Math.abs(normToDx) >= Math.abs(normToDy) ? (normToDx >= 0 ? 1 : -1) : 0;
+        const altDdy = Math.abs(normToDy) >  Math.abs(normToDx) ? (normToDy >= 0 ? 1 : -1) : 0;
+        const anwx = clamp(wx + altDdx, 0, worldW - 1);
+        const anwy = clamp(wy + altDdy, 0, worldH - 1);
+        if (!recentSteps.includes(`${anwx},${anwy}`)) { ddx = altDdx; ddy = altDdy; }
+      }
+
+      sDx = sDx * 0.6 + ddx * 0.4;
+      sDy = sDy * 0.6 + ddy * 0.4;
+      wx = clamp(wx + ddx, 0, worldW - 1);
+      wy = clamp(wy + ddy, 0, worldH - 1);
+    }
+  });
+
+  // Refresh all tiles using composite rendering (shows all layers)
+  const total = GRID_COLS * GRID_ROWS;
+  for (let i = 0; i < total; i++) refreshMapComposite(i);
+
+  // Clear pick highlights
+  document.querySelectorAll('.cell.river-src, .cell.river-dst')
+    .forEach(c => c.classList.remove('river-src', 'river-dst'));
+
+  scheduleAutosave();
+  closeModal('modal-gen');
+  toast(`Roads generated on "${activeLayer().name}" layer`);
+}
+
+/* ════════════════════════════════════════════
+   LAYER PANEL
+   Builds the layer switcher in the sidebar (desktop) and tools sheet (mobile).
+   Three fixed layers: Terrain (base), Underground (lower), Structures (upper).
+   Clicking a layer row makes it active — the palette and map data switch to it.
+   The eye button toggles layer visibility (hidden layers are skipped in rendering).
+   Layer names are editable inline.
+════════════════════════════════════════════ */
+
+/**
+ * Builds (or rebuilds) the layer panel inside the sidebar.
+ * Called on boot and whenever the active layer or visibility changes.
+ */
+function buildLayerPanel() {
+  // Find or create the layer section in the sidebar
+  let section = document.getElementById('layer-panel-section');
+  if (!section) {
+    // Insert before the Brush section (first .s-section)
+    const sidebar = document.getElementById('sidebar');
+    if (!sidebar) return;
+    section = document.createElement('div');
+    section.id = 'layer-panel-section';
+    section.className = 's-section';
+    const firstSection = sidebar.querySelector('.s-section');
+    if (firstSection) sidebar.insertBefore(section, firstSection);
+    else sidebar.appendChild(section);
+  }
+
+  section.innerHTML = '';
+
+  // Section title
+  const title = document.createElement('div');
+  title.className = 's-title';
+  title.textContent = 'Layers';
+  section.appendChild(title);
+
+  // Badge class map: terrain=green, underground=purple, structures=amber
+  const badgeClass = { terrain: 'terrain', underground: 'lower', structures: 'upper' };
+  const badgeLabel = { terrain: 'T', underground: 'U', structures: 'S' };
+
+  layers.forEach((layer, idx) => {
+    const row = document.createElement('div');
+    row.className = 'layer-row' + (idx === activeLayerIdx ? ' active-layer' : '');
+    row.title = `Click to edit ${layer.name} layer`;
+
+    // Visibility toggle button (eye icon)
+    const visBtn = document.createElement('button');
+    visBtn.className = 'layer-vis-btn' + (layer.visible ? ' visible' : '');
+    visBtn.textContent = layer.visible ? '◉' : '○';
+    visBtn.title = layer.visible ? 'Hide layer' : 'Show layer';
+    visBtn.onclick = e => {
+      e.stopPropagation();
+      layer.visible = !layer.visible;
+      // Re-render all tiles to reflect visibility change
+      const total = GRID_COLS * GRID_ROWS;
+      for (let i = 0; i < total; i++) refreshMapComposite(i);
+      buildLayerPanel();
+    };
+
+    // Editable layer name
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.className = 'layer-name-input';
+    nameInput.value = layer.name;
+    nameInput.title = 'Click to rename';
+    nameInput.onclick = e => e.stopPropagation();
+    nameInput.onchange = e => {
+      layer.name = e.target.value.trim() || layer.name;
+      scheduleAutosave();
+    };
+
+    // Layer type badge
+    const badge = document.createElement('span');
+    badge.className = 'layer-badge ' + (badgeClass[layer.id] || 'terrain');
+    badge.textContent = badgeLabel[layer.id] || layer.id[0].toUpperCase();
+    badge.title = layer.id;
+
+    row.append(visBtn, nameInput, badge);
+
+    // Click row (not the name input) to switch active layer
+    row.addEventListener('click', () => setActiveLayer(idx));
+
+    section.appendChild(row);
+  });
+}
+
+/**
+ * Switches the active layer to `idx`.
+ * Updates the palette, layer panel highlight, and resets the current symbol
+ * to the first symbol in the new layer's palette (if available).
+ */
+function setActiveLayer(idx) {
+  if (idx < 0 || idx >= layers.length) return;
+  activeLayerIdx = idx;
+
+  // Re-point the backward-compat shim variables to the new active layer
+  syncLayerRefs();
+
+  // Reset current symbol to first available in new layer's palette
+  const firstCat = layers[idx].categories.find(c => c.symbols.length > 0);
+  if (firstCat) {
+    const firstSym = firstCat.symbols[0];
+    currentChar  = firstSym.char;
+    currentColor = firstSym.color || firstCat.color || '';
+  }
+
+  buildPalette();
+  buildLayerPanel();
+  updateSelIndicator();
+  updateToolbarSymbol();
+  scheduleAutosave();
+  toast(`Layer: ${layers[idx].name}`);
+}
+
+/**
+ * Composite cell renderer — reads all visible layers bottom-up and
+ * displays the topmost non-empty character for each cell.
+ * Called instead of refreshMap() when layer visibility changes.
+ * For single-layer edits (painting, generation), refreshMap() is still used
+ * since it only needs to show the active layer's data.
+ */
+function refreshMapComposite(mi) {
+  document.querySelectorAll(`.cell[data-mi="${mi}"]`).forEach(cell => {
+    const r = parseInt(cell.dataset.r), c = parseInt(cell.dataset.c);
+
+    // Walk layers bottom-up: terrain → underground → structures
+    // Use the topmost visible non-empty cell
+    let ch = ' ', color = '';
+    for (let li = 0; li < layers.length; li++) {
+      const layer = layers[li];
+      if (!layer.visible) continue;
+      const layerCh = layer.maps[mi]?.[r]?.[c] ?? ' ';
+      if (layerCh !== ' ') {
+        ch = layerCh;
+        color = layer.cellColors[`${mi},${r},${c}`] || '';
+        // Don't break — upper layers can override lower ones
+      }
+    }
+
+    cell.textContent = ch === ' ' ? '' : ch;
+    // For color: use the winning layer's override, then look up palette color
+    // from the layer that owns the winning character
+    if (!color) {
+      // Find which layer owns this character and get its palette color
+      for (let li = layers.length - 1; li >= 0; li--) {
+        const layer = layers[li];
+        if (!layer.visible) continue;
+        const layerCh = layer.maps[mi]?.[r]?.[c] ?? ' ';
+        if (layerCh !== ' ' && layerCh === ch) {
+          // Look up color in this layer's palette
+          for (const cat of layer.categories) {
+            const sym = cat.symbols.find(s => s.char === ch);
+            if (sym) { color = sym.color || cat.color; break; }
+          }
+          break;
+        }
+      }
+    }
+    cell.style.color = color || 'var(--text)';
+  });
 }
 
 /* ════════════════════════════════════════════
