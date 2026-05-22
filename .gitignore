@@ -1,0 +1,8 @@
+# Local backup folder — not part of the project
+backup because GIT is the Destroyer/
+
+# Legacy desktop-only version — archived locally, not tracked
+desktop/
+
+# Node / tooling
+node_modules/
