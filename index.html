@@ -1381,9 +1381,17 @@ body.screenshot-mode { padding-bottom: 0 !important; }
   <button class="hbtn" onclick="openGenModal()" style="border-color:#3a5a3a;color:#8ef0a0">⚙ Generate</button>
   <div class="sep"></div>
   <button class="hbtn" onclick="copyActiveMap()" title="Copy active map text to clipboard">⎘ Copy Map</button>
-  <button class="hbtn" onclick="downloadActiveMap()">↓ Save Map</button>
-  <button class="hbtn" onclick="exportMaps()" title="Export all maps as individual .txt files">↓ Export Maps</button>
-  <button class="hbtn" onclick="exportLegend()" title="Export symbol palette as a legend .json file">↓ Legend</button>
+  <button class="hbtn" onclick="pasteActiveMap()" title="Paste clipboard text into the active map">⧉ Paste Map</button>
+  <div class="split-btn-wrap" style="display:inline-flex;align-self:center">
+    <button class="hbtn split-main" onclick="saveProject()" title="Save project as .json" style="border-radius:2px 0 0 2px;border-right:none">↓ Save</button>
+    <button class="hbtn split-caret" onclick="toggleSaveDropdown(this)" style="border-radius:0 2px 2px 0;padding:4px 7px;font-size:10px">▾</button>
+    <div class="split-dropdown" id="save-dropdown">
+      <button onclick="saveProject();closeSaveDropdown()">⊟ Save project (.json)</button>
+      <button onclick="downloadActiveMap();closeSaveDropdown()">↓ Save active map (.txt)</button>
+      <button onclick="exportMaps();closeSaveDropdown()">↓ Export all maps (.txt)</button>
+      <button onclick="exportLegend();closeSaveDropdown()">↓ Export legend (.json)</button>
+    </div>
+  </div>
   <div class="sep"></div>
   <button class="hbtn" onclick="toggleScreenshot()" title="Hide UI for screenshotting — press Escape or click to exit">⊡ Screenshot</button>
   <div class="sep"></div>
@@ -2063,9 +2071,10 @@ body.screenshot-mode { padding-bottom: 0 !important; }
         <span class="tools-lbl">Export</span>
         <div class="tools-btn-group">
           <button class="tools-btn" onclick="copyActiveMap();closeSheet('sheet-tools')">⎘ Copy</button>
+          <button class="tools-btn" onclick="pasteActiveMap();closeSheet('sheet-tools')">⧉ Paste</button>
+          <button class="tools-btn" onclick="saveProject();closeSheet('sheet-tools')">⊟ JSON</button>
           <button class="tools-btn" onclick="downloadActiveMap();closeSheet('sheet-tools')">↓ Map</button>
           <button class="tools-btn" onclick="exportMaps();closeSheet('sheet-tools')">↓ All</button>
-          <button class="tools-btn" onclick="exportLegend();closeSheet('sheet-tools')">↓ Legend</button>
         </div>
       </div>
 
@@ -3235,9 +3244,56 @@ function mapToTextComposite(mi) {
   return rows.join('\n');
 }
 
+/**
+ * Toggles the Save split-button dropdown open/closed.
+ * Closes automatically when the user clicks anywhere outside it.
+ */
+function toggleSaveDropdown(btn) {
+  const dd = document.getElementById('save-dropdown');
+  dd.classList.toggle('open');
+  if (dd.classList.contains('open')) {
+    setTimeout(() => document.addEventListener('click', closeSaveDropdown, { once: true }), 0);
+  }
+}
+
+/** Closes the Save dropdown. */
+function closeSaveDropdown() {
+  const dd = document.getElementById('save-dropdown');
+  if (dd) dd.classList.remove('open');
+}
+
 /** Copies the active tile to the system clipboard as plain text (composited across all visible layers). */
 function copyActiveMap() {
   navigator.clipboard.writeText(mapToTextComposite(activeMap)).then(() => toast('Copied!'));
+}
+
+/**
+ * Pastes plain text from the system clipboard into the active map tile.
+ * Each line of text becomes a row; characters are written left-to-right.
+ * Rows/columns that exceed the tile dimensions are silently clipped.
+ * Pushes an undo snapshot before writing.
+ */
+async function pasteActiveMap() {
+  let text;
+  try {
+    text = await navigator.clipboard.readText();
+  } catch (e) {
+    toast('Clipboard read failed — check browser permissions');
+    return;
+  }
+  if (!text) { toast('Clipboard is empty'); return; }
+  pushUndo();
+  const lines = text.split('\n');
+  for (let r = 0; r < Math.min(lines.length, TILE_H); r++) {
+    const line = lines[r];
+    for (let c = 0; c < Math.min(line.length, TILE_W); c++) {
+      maps[activeMap][r][c] = line[c];
+      delete cellColors[`${activeMap},${r},${c}`];
+    }
+  }
+  refreshMap(activeMap);
+  scheduleAutosave();
+  toast(`Pasted into map[${activeMap % GRID_COLS},${Math.floor(activeMap / GRID_COLS)}]`);
 }
 
 /** Downloads the active tile as a .txt file (composited across all visible layers). */
