@@ -3270,6 +3270,36 @@ function closeSaveDropdown() {
   if (dd) dd.classList.remove('open');
 }
 
+/**
+ * Shows a floating pick-mode banner at the top of the canvas so the user
+ * knows they are in coordinate-pick mode and can press Esc to cancel.
+ * Replaces the old semi-transparent modal approach which left a ghost overlay.
+ */
+function showPickBanner(msg) {
+  let banner = document.getElementById('pick-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'pick-banner';
+    banner.style.cssText = [
+      'position:fixed', 'top:60px', 'left:50%', 'transform:translateX(-50%)',
+      'background:#0e2018', 'border:1px solid var(--accent3)',
+      'color:var(--accent3)', 'font-family:var(--mono)', 'font-size:12px',
+      'letter-spacing:.8px', 'padding:8px 20px', 'border-radius:3px',
+      'z-index:9000', 'pointer-events:none',
+      'box-shadow:0 4px 16px rgba(0,0,0,.6)',
+    ].join(';');
+    document.body.appendChild(banner);
+  }
+  banner.textContent = msg;
+  banner.style.display = 'block';
+}
+
+/** Hides the pick-mode banner. */
+function hidePickBanner() {
+  const banner = document.getElementById('pick-banner');
+  if (banner) banner.style.display = 'none';
+}
+
 /** Copies the active tile to the system clipboard as plain text (composited across all visible layers). */
 function copyActiveMap() {
   navigator.clipboard.writeText(mapToTextComposite(activeMap)).then(() => toast('Copied!'));
@@ -3856,7 +3886,22 @@ function updateSheetFillConn(n) {
 document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT') return; // don't intercept typing in inputs
   if (e.key === 'Escape') {
-    // Exit screenshot mode first if active, otherwise clear selection
+    // Cancel coordinate pick mode (river or road) — highest priority
+    if (riverPickPending) {
+      riverPickPending = null;
+      buildRiverPairList();
+      hidePickBanner();
+      document.getElementById('modal-gen').classList.add('open');
+      return;
+    }
+    if (roadPickPending) {
+      roadPickPending = null;
+      buildRoadPairList();
+      hidePickBanner();
+      document.getElementById('modal-gen').classList.add('open');
+      return;
+    }
+    // Exit screenshot mode, otherwise clear selection
     if (document.body.classList.contains('screenshot-mode')) {
       toggleScreenshot(); return;
     }
@@ -4203,19 +4248,20 @@ function startPick(pairIdx, field) {
   if (riverPickPending?.pairIdx === pairIdx && riverPickPending?.field === field) {
     riverPickPending = null;
     buildRiverPairList();
+    hidePickBanner();
     return;
   }
   riverPickPending = { pairIdx, field };
   buildRiverPairList();
-  const modal = document.getElementById('modal-gen');
-  modal.style.pointerEvents = 'none';
-  modal.style.opacity = '0.35';
-  toast('Click a cell on the map to set the point');
+  // Hide the entire modal backdrop so no ghost overlay appears over the map.
+  // A floating banner replaces the toast so the user knows pick mode is active.
+  document.getElementById('modal-gen').classList.remove('open');
+  showPickBanner('Click a cell on the map to set the river/stream point — or press Esc to cancel');
 }
 
 /**
  * Completes a river coordinate pick by storing (wx, wy) into the pending pair.
- * Restores the modal opacity and redraws the pair list and highlights.
+ * Restores the modal and redraws the pair list and highlights.
  * Returns true if a pick was pending, false otherwise.
  */
 function finishPick(wx, wy) {
@@ -4225,9 +4271,9 @@ function finishPick(wx, wy) {
     riverPairs[pairIdx][field] = { wx, wy };
   }
   riverPickPending = null;
-  const modal = document.getElementById('modal-gen');
-  modal.style.pointerEvents = '';
-  modal.style.opacity = '';
+  hidePickBanner();
+  // Re-open the modal so the user can continue editing
+  document.getElementById('modal-gen').classList.add('open');
   buildRiverPairList();
   refreshRiverHighlights();
   return true;
@@ -5609,14 +5655,14 @@ function startRoadPick(pairIdx, field) {
   if (roadPickPending?.pairIdx === pairIdx && roadPickPending?.field === field) {
     roadPickPending = null;
     buildRoadPairList();
+    hidePickBanner();
     return;
   }
   roadPickPending = { pairIdx, field };
   buildRoadPairList();
-  const modal = document.getElementById('modal-gen');
-  modal.style.pointerEvents = 'none';
-  modal.style.opacity = '0.35';
-  toast('Click a cell on the map to set the road point');
+  // Hide the entire modal backdrop so no ghost overlay appears over the map.
+  document.getElementById('modal-gen').classList.remove('open');
+  showPickBanner('Click a cell on the map to set the road/path point — or press Esc to cancel');
 }
 
 /** Completes a road coordinate pick. */
@@ -5625,9 +5671,9 @@ function finishRoadPick(wx, wy) {
   const { pairIdx, field } = roadPickPending;
   if (roadPairs[pairIdx]) roadPairs[pairIdx][field] = { wx, wy };
   roadPickPending = null;
-  const modal = document.getElementById('modal-gen');
-  modal.style.pointerEvents = '';
-  modal.style.opacity = '';
+  hidePickBanner();
+  // Re-open the modal so the user can continue editing
+  document.getElementById('modal-gen').classList.add('open');
   buildRoadPairList();
   refreshRoadHighlights();
   return true;
