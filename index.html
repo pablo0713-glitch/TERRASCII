@@ -2599,12 +2599,12 @@ async function loadProjectFile(event) {
   }
 }
 
-// ── Export Maps — download each tile as an individual .txt file ──
+// ── Export Maps — download each tile as an individual .txt file (composited across all visible layers) ──
 function exportMaps() {
   const total = GRID_COLS * GRID_ROWS;
   for (let i = 0; i < total; i++) {
     const r = Math.floor(i / GRID_COLS), c = i % GRID_COLS;
-    dlFile(`map_${c}_${r}.txt`, mapToText(i));
+    dlFile(`map_${c}_${r}.txt`, mapToTextComposite(i));
   }
   toast(`Downloaded ${total} map file${total > 1 ? 's' : ''}`);
 }
@@ -3203,29 +3203,56 @@ function mkBtn(label, cls, onClick, padding) {
    MAP TEXT EXPORT
 ════════════════════════════════════════════ */
 
-/** Returns the tile at index `mi` as a plain-text string (rows joined with newlines). */
+/**
+ * Returns the tile at index `mi` as a plain-text string using the active layer only.
+ * Used internally by the composite exporter — prefer mapToTextComposite() for user-facing exports.
+ */
 function mapToText(mi) {
   return maps[mi].map(row => row.join('')).join('\n');
 }
 
-/** Copies the active tile to the system clipboard as plain text. */
-function copyActiveMap() {
-  navigator.clipboard.writeText(mapToText(activeMap)).then(() => toast('Copied!'));
+/**
+ * Returns the tile at index `mi` as a plain-text string composited across all visible layers.
+ * Walks layers bottom-up (terrain → underground → structures) and uses the topmost
+ * visible non-empty character for each cell — matching exactly what the user sees on screen.
+ */
+function mapToTextComposite(mi) {
+  const rows = [];
+  for (let r = 0; r < TILE_H; r++) {
+    let row = '';
+    for (let c = 0; c < TILE_W; c++) {
+      let ch = ' ';
+      for (let li = 0; li < layers.length; li++) {
+        const layer = layers[li];
+        if (!layer.visible) continue;
+        const layerCh = layer.maps[mi]?.[r]?.[c] ?? ' ';
+        if (layerCh !== ' ') ch = layerCh;
+      }
+      row += ch;
+    }
+    rows.push(row);
+  }
+  return rows.join('\n');
 }
 
-/** Downloads the active tile as a .txt file. */
+/** Copies the active tile to the system clipboard as plain text (composited across all visible layers). */
+function copyActiveMap() {
+  navigator.clipboard.writeText(mapToTextComposite(activeMap)).then(() => toast('Copied!'));
+}
+
+/** Downloads the active tile as a .txt file (composited across all visible layers). */
 function downloadActiveMap() {
   const r = Math.floor(activeMap / GRID_COLS), c = activeMap % GRID_COLS;
-  dlFile(`map_${c}_${r}.txt`, mapToText(activeMap));
+  dlFile(`map_${c}_${r}.txt`, mapToTextComposite(activeMap));
   toast(`Saved map_${c}_${r}.txt`);
 }
 
-/** Downloads all tiles as individual .txt files. */
+/** Downloads all tiles as individual .txt files (composited across all visible layers). */
 function downloadAllMaps() {
   const total = GRID_COLS * GRID_ROWS;
   for (let i = 0; i < total; i++) {
     const r = Math.floor(i / GRID_COLS), c = i % GRID_COLS;
-    dlFile(`map_${c}_${r}.txt`, mapToText(i));
+    dlFile(`map_${c}_${r}.txt`, mapToTextComposite(i));
   }
   toast(`Saved ${total} map file${total > 1 ? 's' : ''}`);
 }
