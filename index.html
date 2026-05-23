@@ -1924,7 +1924,14 @@ body.screenshot-mode { padding-bottom: 0 !important; }
         <div class="divider"></div>
 
         <div style="display:flex;gap:6px">
-          <button class="sbtn" style="flex:1;font-size:11px" onclick="exportPresets()">↓ Export Presets</button>
+          <div class="split-btn-wrap" style="flex:1">
+            <button class="sbtn split-main" style="flex:1;font-size:11px;border-radius:2px 0 0 2px;border-right:none" onclick="exportPresets()">↓ Export Presets</button>
+            <button class="split-caret" onclick="togglePresetsDropdown(this)" style="font-size:10px">▾</button>
+            <div class="split-dropdown" id="presets-export-dropdown">
+              <button onclick="exportPresets();closePresetsDropdown()">↓ Export as .json</button>
+              <button onclick="exportPresetsTxt();closePresetsDropdown()">↓ Export as .txt</button>
+            </div>
+          </div>
           <button class="sbtn" style="flex:1;font-size:11px" onclick="document.getElementById('preset-import-input').click()">↑ Import Presets</button>
           <input type="file" id="preset-import-input" accept=".json" style="display:none" onchange="importPresets(event)">
         </div>
@@ -4435,6 +4442,99 @@ function exportPresets() {
   const slug = projectName.replace(/[^a-z0-9_\-]/gi, '_') || 'project';
   dlFile(`${slug}_presets.json`, JSON.stringify({ version: 1, presets: genPresets }, null, 2));
   toast(`Exported ${genPresets.length} preset${genPresets.length > 1 ? 's' : ''}`);
+}
+
+/**
+ * Exports all presets as a human-readable plain-text summary (.txt).
+ * Each preset is rendered as a labelled block showing its key settings:
+ * fill mode, selected categories, weighted symbol percentages,
+ * Perlin noise bands, water parameters, and river/stream pairs.
+ */
+function exportPresetsTxt() {
+  if (genPresets.length === 0) { toast('No presets to export'); return; }
+  const lines = [];
+  const hr = '─'.repeat(52);
+
+  lines.push('TERRASCII — Generation Presets');
+  lines.push(`Project: ${projectName}`);
+  lines.push(`Exported: ${new Date().toLocaleString()}`);
+  lines.push(`Presets: ${genPresets.length}`);
+  lines.push('');
+
+  genPresets.forEach((p, i) => {
+    lines.push(hr);
+    lines.push(`[${i + 1}] ${p.name}`);
+    if (p.savedAt) lines.push(`    Saved: ${new Date(p.savedAt).toLocaleString()}`);
+    lines.push(`    Fill mode: ${p.genFill || 'overwrite'}`);
+
+    // ── Weighted symbols ──
+    if (p.weighted?.weights && Object.keys(p.weighted.weights).length > 0) {
+      lines.push('');
+      lines.push('    Weighted Random:');
+      const total = Object.values(p.weighted.weights).reduce((s, w) => s + w, 0);
+      Object.entries(p.weighted.weights).forEach(([ch, w]) => {
+        const pct = total > 0 ? ((w / total) * 100).toFixed(1) : '0.0';
+        lines.push(`      "${ch === ' ' ? '(space)' : ch}"  weight ${w}  (${pct}%)`);
+      });
+    }
+
+    // ── Perlin bands ──
+    if (p.perlin) {
+      lines.push('');
+      lines.push('    Perlin Noise:');
+      lines.push(`      Scale: ${p.perlin.scale ?? 5}  Octaves: ${p.perlin.octaves ?? 3}  Seed: ${p.perlin.seed ?? 42}  Coherence: ${p.perlin.coherence ?? 0}`);
+      if (p.perlin.bands && Object.keys(p.perlin.bands).length > 0) {
+        lines.push('      Bands:');
+        Object.entries(p.perlin.bands).forEach(([ch, b]) => {
+          const status = b.disabled ? ' [disabled]' : '';
+          lines.push(`        "${ch === ' ' ? '(space)' : ch}"  ${b.lo}–${b.hi}${status}`);
+        });
+      }
+    }
+
+    // ── Water settings ──
+    if (p.water) {
+      const w = p.water;
+      lines.push('');
+      lines.push('    Water:');
+      lines.push(`      Lakes: ${w.lakes ?? 0}  Radius: ${w.radMin ?? 3}–${w.radMax ?? 8}  Lake seed: ${w.lakeSeed ?? 13}`);
+      if (Array.isArray(w.rings) && w.rings.length > 0) {
+        lines.push(`      Depth rings: ${w.rings.map((r, ri) => `${ri === 0 ? 'center' : ri === w.rings.length - 1 ? 'shore' : `ring${ri + 1}`}="${r.sym}" w=${r.width}`).join('  ')}`);
+      }
+      lines.push(`      Rivers: meander=${w.meander ?? 4}  seed=${w.seed ?? 7}`);
+      lines.push(`      Symbols: river-H="${w.symRiverH ?? '═'}"  river-V="${w.symRiverV ?? '║'}"  stream="${w.symStreamA ?? '\\'}"` );
+      if (Array.isArray(w.riverPairs) && w.riverPairs.length > 0) {
+        lines.push(`      Paths (${w.riverPairs.length}):`);
+        w.riverPairs.forEach((pair, pi) => {
+          const src = pair.src ? `(${pair.src.wx},${pair.src.wy})` : 'unset';
+          const dst = pair.dst ? `(${pair.dst.wx},${pair.dst.wy})` : 'unset';
+          lines.push(`        ${pi + 1}. ${pair.type ?? 'river'}  ${src} → ${dst}`);
+        });
+      }
+    }
+
+    lines.push('');
+  });
+
+  lines.push(hr);
+  const slug = projectName.replace(/[^a-z0-9_\-]/gi, '_') || 'project';
+  dlFile(`${slug}_presets.txt`, lines.join('\n'));
+  toast(`Exported ${genPresets.length} preset${genPresets.length > 1 ? 's' : ''} as .txt`);
+}
+
+/** Toggles the Presets export split-button dropdown. */
+function togglePresetsDropdown(btn) {
+  const dd = document.getElementById('presets-export-dropdown');
+  dd.classList.toggle('open');
+  if (dd.classList.contains('open')) {
+    setTimeout(() => document.addEventListener('click', closePresetsDropdown, { once: true }), 0);
+  }
+}
+
+/** Closes the Presets export dropdown. */
+function closePresetsDropdown() {
+  const dd = document.getElementById('presets-export-dropdown');
+  if (dd) dd.classList.remove('open');
 }
 
 /** Imports presets from a .json file, merging with any existing presets. */
