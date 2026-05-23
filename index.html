@@ -1098,14 +1098,15 @@ body.screenshot-mode .bottom-sheet-bg { display: none !important; }
 .dual-range-wrap input[type="range"] {
   position: absolute; width: 100%;
   -webkit-appearance: none; appearance: none;
-  background: transparent; pointer-events: none;
+  background: transparent; pointer-events: all;
   height: 6px; margin: 0;
+  /* z-index is set dynamically in JS so the closer thumb is always on top */
 }
 .dual-range-wrap input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none; appearance: none;
   width: 14px; height: 14px; border-radius: 50%;
   background: var(--text); border: 2px solid var(--bg);
-  cursor: pointer; pointer-events: all;
+  cursor: pointer;
   box-shadow: 0 0 0 1px var(--border2);
 }
 .dual-range-wrap input[type="range"]::-webkit-slider-thumb:hover {
@@ -4840,6 +4841,16 @@ function buildPerlinList(list, allSyms) {
       fill.style.left  = lo + '%';
       fill.style.width = (hi - lo) + '%';
       valLbl.textContent = lo + '–' + hi;
+      // Bring the thumb that is closer to the midpoint to the front so it
+      // remains clickable when both thumbs are at the same position.
+      // When lo === hi, give the hi thumb priority (it can only move right).
+      if (lo >= hi) {
+        loIn.style.zIndex = '1';
+        hiIn.style.zIndex = '2';
+      } else {
+        loIn.style.zIndex = '2';
+        hiIn.style.zIndex = '1';
+      }
     }
 
     loIn.oninput = hiIn.oninput = updateDual;
