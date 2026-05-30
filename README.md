@@ -37,9 +37,12 @@ Switch modes at any time using the **🖥 / 📱 toggle** in the header, or appe
 - **Coordinate status bar** — shows tile, cell, and world coordinates on hover
 
 ### Symbol Palette
-- **Fully editable palette** — add, remove, and reorder categories and symbols
+- **Symbol Palette Builder** — add, remove, reorder, and reset categories and symbols
+- **Active-layer scoped** — loads and saves the palette for the currently selected layer only
+- **Palette import/export** — load or save as `.json`, `.txt`, or `.html`
+- **Top toolbar controls** — Load, Save, Reset to default, and Add Category are grouped together
 - **Per-symbol color overrides** alongside category-level defaults
-- **Color clipboard** — copy a hex color from one symbol and paste it to another
+- **Color clipboard** — copy a hex color from one symbol and paste it to another, with its own status row
 - **Active symbol indicator** always visible
 
 ### Layers

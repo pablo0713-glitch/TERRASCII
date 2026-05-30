@@ -455,6 +455,27 @@ input[type="color"] {
   display: flex; gap: 7px; justify-content: flex-end;
   flex-shrink: 0;
 }
+.palette-toolbar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 0 0 10px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--border);
+}
+.palette-toolbar .spacer { flex: 1 1 auto; }
+.palette-toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+.palette-toolbar-row.clipboard-row {
+  padding-top: 2px;
+}
 
 .divider { height: 1px; background: var(--border); }
 .note    { font-size: 12px; color: var(--accent3); }
@@ -1528,21 +1549,38 @@ body.screenshot-mode { padding-bottom: 0 !important; }
 <div class="modal-bg" id="modal-palette">
   <div class="modal" style="width:570px">
     <div class="modal-hdr">
-      <h2>Edit Palette</h2>
+      <h2>Symbol Palette Builder</h2>
       <button class="modal-x" onclick="closePaletteEditor()">✕</button>
     </div>
-    <div class="modal-body" id="palette-editor-body"></div>
-    <div class="modal-foot">
-      <div style="display:flex;align-items:center;gap:8px;flex:1">
-        <span style="font-size:11px;color:var(--text2)">Color clipboard:</span>
-        <span id="color-clip-swatch" style="
-          width:18px;height:18px;border-radius:2px;border:1px solid var(--border2);
-          display:inline-block;vertical-align:middle;background:#2a2f3f;
-        "></span>
-        <span id="color-clip-val" style="font-size:11px;color:var(--text2);font-family:var(--mono)">empty</span>
-        <button class="sbtn" style="padding:3px 8px;font-size:11px" onclick="colorClip=null;updateColorClipUI()">✕ Clear</button>
+    <div class="modal-body">
+      <div class="palette-toolbar">
+        <div class="palette-toolbar-row">
+          <button class="sbtn" style="padding:4px 10px;font-size:11px;min-height:auto" onclick="openPaletteImport()">↑ Load Palette</button>
+          <div class="split-btn-wrap">
+            <button class="sbtn split-main" style="padding:4px 10px;font-size:11px;border-radius:2px 0 0 2px;border-right:none;min-height:auto" onclick="savePaletteJson()">↓ Save Palette</button>
+            <button class="split-caret" onclick="togglePaletteSaveDropdown(this)" style="font-size:10px">▾</button>
+            <div class="split-dropdown" id="palette-save-dropdown">
+              <button onclick="savePaletteJson();closePaletteSaveDropdown()">↓ Save as .json</button>
+              <button onclick="savePaletteTxt();closePaletteSaveDropdown()">↓ Save as .txt</button>
+              <button onclick="savePaletteHtml();closePaletteSaveDropdown()">↓ Save as .html</button>
+            </div>
+          </div>
+          <button class="sbtn" style="padding:4px 10px;font-size:11px;min-height:auto" onclick="resetActivePaletteToDefault()">↺ Reset to default</button>
+          <button class="sbtn" style="padding:4px 10px;font-size:11px;min-height:auto" onclick="addCategory()">+ Add Category</button>
+        </div>
+        <div class="palette-toolbar-row clipboard-row">
+          <span style="font-size:11px;color:var(--text2)">Color clipboard:</span>
+          <span id="color-clip-swatch" style="
+            width:18px;height:18px;border-radius:2px;border:1px solid var(--border2);
+            display:inline-block;vertical-align:middle;background:#2a2f3f;
+          "></span>
+          <span id="color-clip-val" style="font-size:11px;color:var(--text2);font-family:var(--mono)">empty</span>
+          <button class="sbtn" style="padding:3px 8px;font-size:11px;min-height:auto" onclick="colorClip=null;updateColorClipUI()">✕ Clear</button>
+        </div>
       </div>
-      <button class="sbtn" onclick="addCategory()">+ Add Category</button>
+      <div id="palette-editor-body"></div>
+    </div>
+    <div class="modal-foot">
       <button class="sbtn green" onclick="closePaletteEditor()">Done</button>
     </div>
   </div>
@@ -1951,6 +1989,7 @@ body.screenshot-mode { padding-bottom: 0 !important; }
 </div>
 
 <div id="toast"></div>
+<input type="file" id="palette-import-input" accept=".json,.txt,.html" style="display:none" onchange="importPalette(event)">
 
 <!-- ══ BOTTOM TOOLBAR ══ -->
 <div id="bottom-toolbar">
@@ -3067,7 +3106,7 @@ function applyGridConfig() {
    PALETTE EDITOR
 ════════════════════════════════════════════ */
 function openPaletteEditor()  { renderPalEd(); updateColorClipUI(); openModal('modal-palette'); }
-function closePaletteEditor() { closeModal('modal-palette'); buildPalette(); scheduleAutosave(); }
+function closePaletteEditor() { closePaletteSaveDropdown(); closeModal('modal-palette'); buildPalette(); scheduleAutosave(); }
 
 function updateColorClipUI() {
   const swatch = document.getElementById('color-clip-swatch');
@@ -3084,6 +3123,254 @@ function updateColorClipUI() {
     val.textContent = 'empty';
     val.style.color = 'var(--text3)';
   }
+}
+
+/** Returns a deep-cloned, sanitised snapshot of the active layer palette. */
+function buildPalettePayload() {
+  const layer = activeLayer();
+  return {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    layer: {
+      id: layer?.id || 'terrain',
+      name: layer?.name || 'Layer',
+    },
+    categories: deepClone(layer?.categories || []),
+  };
+}
+
+/** Normalises imported palette categories so the editor can safely consume them. */
+function sanitizePaletteCategories(rawCategories) {
+  if (!Array.isArray(rawCategories)) return null;
+  return rawCategories.map(cat => ({
+    id: cat && cat.id ? String(cat.id) : uid(),
+    name: cat && cat.name ? String(cat.name) : 'Category',
+    color: cat && cat.color ? String(cat.color) : '#aaaaaa',
+    symbols: Array.isArray(cat?.symbols) ? cat.symbols.map(sym => ({
+      char: sym && sym.char !== undefined ? String(sym.char) : ' ',
+      name: sym && sym.name ? String(sym.name) : String(sym?.char ?? 'Symbol'),
+      color: sym && sym.color ? String(sym.color) : (cat && cat.color ? String(cat.color) : '#aaaaaa'),
+    })) : [],
+  }));
+}
+
+/** Returns the built-in starter palette for a given layer id. */
+function defaultPaletteForLayerId(layerId) {
+  if (layerId === 'underground') return deepClone(UNDERGROUND_STARTER);
+  if (layerId === 'structures') return deepClone(STRUCTURES_STARTER);
+  return deepClone(DEFAULT_CATEGORIES);
+}
+
+/** Applies imported categories to the active layer and refreshes palette UI. */
+function applyImportedPalette(categoriesIn) {
+  const cleaned = sanitizePaletteCategories(categoriesIn);
+  if (!cleaned || cleaned.length === 0) {
+    toast('No palette categories found');
+    return false;
+  }
+
+  const layer = activeLayer();
+  if (!layer) return false;
+  layer.categories = cleaned;
+  syncLayerRefs();
+  buildPalette();
+  buildLayerPanel();
+  buildGenSymList();
+  buildWaterSymSelects();
+  renderPalEd();
+  scheduleAutosave();
+  return true;
+}
+
+/** Resets the active layer palette to its built-in default starter palette. */
+function resetActivePaletteToDefault() {
+  const layer = activeLayer();
+  if (!layer) return;
+
+  layer.categories = defaultPaletteForLayerId(layer.id);
+  syncLayerRefs();
+
+  const firstCat = layer.categories.find(c => c.symbols.length > 0);
+  if (firstCat) {
+    const firstSym = firstCat.symbols[0];
+    currentChar = firstSym.char;
+    currentColor = firstSym.color || firstCat.color || '';
+  }
+
+  buildPalette();
+  buildLayerPanel();
+  buildGenSymList();
+  buildWaterSymSelects();
+  renderPalEd();
+  updateToolbarSymbol();
+  scheduleAutosave();
+  toast(`Reset ${layer.name} palette to defaults`);
+}
+
+/** Builds a plain-text palette export that includes a machine-readable payload block. */
+function buildPaletteTextExport() {
+  const payload = buildPalettePayload();
+  const lines = [];
+  lines.push('TERRASCII PALETTE EXPORT');
+  lines.push(`Exported: ${new Date().toLocaleString()}`);
+  lines.push(`Layer: ${payload.layer.name}`);
+  lines.push(`Layer ID: ${payload.layer.id}`);
+  lines.push(`Categories: ${payload.categories.length}`);
+  lines.push('');
+  payload.categories.forEach((cat, i) => {
+    lines.push(`[Category ${i + 1}] ${cat.name} | ${cat.color || 'no color'}`);
+    cat.symbols.forEach(sym => {
+      lines.push(`  ${sym.char} = ${sym.name} | ${sym.color || 'no color'}`);
+    });
+    lines.push('');
+  });
+  lines.push('--- BEGIN TERRASCII PALETTE JSON ---');
+  lines.push(JSON.stringify(payload, null, 2));
+  lines.push('--- END TERRASCII PALETTE JSON ---');
+  return lines.join('\n');
+}
+
+/** Builds a standalone HTML palette export with an embedded JSON payload. */
+function buildPaletteHtmlExport() {
+  const payload = buildPalettePayload();
+  const scriptOpen = '<script id="terrascii-palette-data" type="application/json">';
+  const scriptClose = '</scr' + 'ipt>';
+  const rows = payload.categories.map(cat => `
+    <section class="cat">
+      <h2>${escapeHtml(cat.name)}</h2>
+      <div class="meta">Color: ${escapeHtml(cat.color || 'no color')}</div>
+      <div class="symbols">
+        ${cat.symbols.map(sym => `
+          <div class="sym">
+            <span class="glyph" style="color:${escapeHtml(sym.color || cat.color || '#e8eaf2')}">${escapeHtml(sym.char === ' ' ? '·' : sym.char)}</span>
+            <span class="name">${escapeHtml(sym.name)}</span>
+            <span class="color">${escapeHtml(sym.color || cat.color || 'no color')}</span>
+          </div>`).join('')}
+      </div>
+    </section>`).join('\n');
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${escapeHtml(projectName)} - Palette Export</title>
+  <style>
+    body { margin: 0; padding: 24px; background: #0f1218; color: #e8eaf2; font-family: monospace; }
+    h1 { margin: 0 0 8px; font-size: 22px; }
+    .meta { color: #9aa3b8; font-size: 12px; margin-bottom: 18px; }
+    .cat { margin-bottom: 18px; padding: 14px; border: 1px solid #2a2f3f; border-radius: 8px; background: #151922; }
+    .cat h2 { margin: 0 0 6px; font-size: 16px; }
+    .symbols { display: grid; gap: 6px; margin-top: 10px; }
+    .sym { display: grid; grid-template-columns: 40px 1fr auto; gap: 10px; align-items: center; }
+    .glyph { font-size: 18px; font-weight: 700; }
+    .name, .color { color: #c7ccda; }
+  </style>
+</head>
+<body>
+  <h1>${escapeHtml(projectName)} - Palette Export</h1>
+  <div class="meta">Exported ${escapeHtml(new Date().toLocaleString())} | layer ${escapeHtml(payload.layer.name)}</div>
+  ${rows || '<p>No categories.</p>'}
+  ${scriptOpen}${JSON.stringify(payload).replace(/</g, '\\u003c')}${scriptClose}
+</body>
+</html>`;
+}
+
+/** Saves the active layer palette as .json. */
+function savePaletteJson() {
+  const payload = buildPalettePayload();
+  const slug = `${projectSlug()}_${payload.layer.id || 'palette'}`;
+  dlFile(`${slug}_palette.json`, JSON.stringify(payload, null, 2));
+  toast(`Saved ${payload.layer.name} palette (.json)`);
+}
+
+/** Saves the active layer palette as .txt. */
+function savePaletteTxt() {
+  const payload = buildPalettePayload();
+  const slug = `${projectSlug()}_${payload.layer.id || 'palette'}`;
+  dlFile(`${slug}_palette.txt`, buildPaletteTextExport());
+  toast(`Saved ${payload.layer.name} palette (.txt)`);
+}
+
+/** Saves the active layer palette as .html. */
+function savePaletteHtml() {
+  const payload = buildPalettePayload();
+  const slug = `${projectSlug()}_${payload.layer.id || 'palette'}`;
+  dlFile(`${slug}_palette.html`, buildPaletteHtmlExport(), 'text/html;charset=utf-8');
+  toast(`Saved ${payload.layer.name} palette (.html)`);
+}
+
+function openPaletteImport() {
+  document.getElementById('palette-import-input').click();
+}
+
+/** Parses palette data from JSON, TXT, or HTML exports. */
+function parsePaletteImport(text) {
+  const trimmed = text.trim();
+
+  // Direct JSON export
+  try {
+    const obj = JSON.parse(trimmed);
+    if (obj && (Array.isArray(obj.categories) || Array.isArray(obj.palette?.categories))) {
+      return {
+        categories: obj.categories || obj.palette.categories,
+      };
+    }
+  } catch (_) {}
+
+  // HTML export with embedded JSON payload
+  if (/<html[\s>]/i.test(trimmed) || /terrascii-palette-data/i.test(trimmed)) {
+    try {
+      const doc = new DOMParser().parseFromString(trimmed, 'text/html');
+      const script = doc.getElementById('terrascii-palette-data');
+      if (script?.textContent) {
+        const obj = JSON.parse(script.textContent);
+        if (obj && Array.isArray(obj.categories)) return { categories: obj.categories };
+      }
+    } catch (_) {}
+  }
+
+  // TXT export with an embedded JSON block
+  const m = trimmed.match(/--- BEGIN TERRASCII PALETTE JSON ---\s*([\s\S]*?)\s*--- END TERRASCII PALETTE JSON ---/i);
+  if (m) {
+    const obj = JSON.parse(m[1]);
+    if (obj && Array.isArray(obj.categories)) return { categories: obj.categories };
+  }
+
+  return null;
+}
+
+/** Imports a palette from .json, .txt, or .html and replaces the active layer palette. */
+async function importPalette(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  event.target.value = '';
+  try {
+    const parsed = parsePaletteImport(await file.text());
+    if (!parsed) { toast('No palette found in file'); return; }
+    if (!applyImportedPalette(parsed.categories)) return;
+    toast(`Imported palette from ${file.name}`);
+  } catch (e) {
+    toast('Failed to parse palette file');
+  }
+}
+
+/** Toggles the palette save dropdown open/closed. */
+function togglePaletteSaveDropdown(btn) {
+  const dd = document.getElementById('palette-save-dropdown');
+  if (!dd) return;
+  const shouldOpen = !dd.classList.contains('open');
+  closePaletteSaveDropdown();
+  if (shouldOpen) {
+    dd.classList.add('open');
+    setTimeout(() => document.addEventListener('click', closePaletteSaveDropdown, { once: true }), 0);
+  }
+}
+
+/** Closes the palette save dropdown. */
+function closePaletteSaveDropdown() {
+  const dd = document.getElementById('palette-save-dropdown');
+  if (dd) dd.classList.remove('open');
 }
 
 function renderPalEd() {
@@ -6416,12 +6703,6 @@ function buildLayerPanel() {
   title.className = 's-title';
   title.textContent = 'Layers';
   section.appendChild(title);
-
-  const hint = document.createElement('div');
-  hint.className = 'note';
-  hint.style.margin = '0 0 6px';
-  hint.textContent = 'Terrain is on by default. Turn on Underground or Structures with the eye button.';
-  section.appendChild(hint);
 
   // Badge class map: terrain=green, underground=purple, structures=amber
   const badgeClass = { terrain: 'terrain', underground: 'lower', structures: 'upper' };
