@@ -50,7 +50,7 @@
 
   Export & Project
   · Save / load projects as .json (version 2 schema)
-  · Autosave to localStorage (debounced 900 ms); restores on page load
+  · Autosave to localStorage; restores on page load
   · Export the project or selected tile as .txt or standalone .html files
   · Copy active tile text to system clipboard
   · Export the selected tile as a standalone .json snapshot
@@ -135,12 +135,14 @@ body {
 #header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 7px 14px;
+  gap: 6px;
+  padding: 6px 10px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow: hidden;
+  min-height: 43px;
 }
 
 #header h1 {
@@ -164,7 +166,7 @@ body {
   font-size: 11px;
   letter-spacing: .8px;
   text-transform: uppercase;
-  padding: 4px 10px;
+  padding: 4px 8px;
   cursor: pointer;
   transition: all .14s;
   white-space: nowrap;
@@ -180,7 +182,7 @@ body {
   color: var(--accent2);
   letter-spacing: .5px;
   white-space: nowrap;
-  max-width: 180px;
+  max-width: 150px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -190,14 +192,26 @@ body {
   color: var(--text2);
   letter-spacing: .5px;
   white-space: nowrap;
+  flex: 0 1 120px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 #coord-bar {
   margin-left: auto;
+  flex: 0 0 300px;
+  min-width: 300px;
   font-size: 11px;
   color: var(--text2);
   letter-spacing: .4px;
   white-space: nowrap;
+  overflow: hidden;
+  text-align: right;
+}
+
+#zoom-tool-label {
+  flex-shrink: 0;
 }
 
 /* ══ LAYOUT ══ */
@@ -205,6 +219,7 @@ body {
 
 /* ══ SIDEBAR — hidden, replaced by bottom sheets ══ */
 #sidebar { display: none; }
+#symbol-panel { display: none; }
 
 .s-section {
   border-bottom: 1px solid var(--border);
@@ -296,6 +311,58 @@ body {
   font-weight: 400;
 }
 .sym-btn:hover .tip { display: block; }
+
+/* ══ DESKTOP SYMBOL PANEL ══ */
+.symbol-panel-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 13px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.symbol-panel-actions {
+  display: flex;
+  gap: 5px;
+  flex-shrink: 0;
+}
+.symbol-panel-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 11px 13px;
+}
+.symbol-panel-mix {
+  border-bottom: 1px solid var(--border);
+  padding: 10px 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.symbol-panel-mix-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.symbol-panel-mix-row .mode-btn {
+  flex: 0 0 auto;
+  padding: 4px 7px;
+  font-size: 10px;
+}
+.symbol-panel .cat-block {
+  margin-bottom: 13px;
+}
+.symbol-panel .sym-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(38px, 1fr));
+  gap: 5px;
+}
+.symbol-panel .sym-btn {
+  width: 100%;
+  height: 38px;
+}
 
 /* ══ INPUTS ══ */
 input[type="text"], input[type="number"] {
@@ -475,6 +542,87 @@ input[type="color"] {
 }
 .palette-toolbar-row.clipboard-row {
   padding-top: 2px;
+}
+.symbol-ref-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 6px;
+}
+.symbol-ref-section {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.symbol-ref-title {
+  font-family: var(--head);
+  font-size: 12px;
+  letter-spacing: 2px;
+  color: var(--accent2);
+  text-transform: uppercase;
+}
+.symbol-ref-item {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 5px;
+}
+.symbol-ref-char {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #090b10;
+  border: 1px solid var(--border2);
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 16px;
+  font-weight: 700;
+  border-radius: 2px;
+}
+.symbol-ref-label {
+  min-width: 0;
+  color: var(--text2);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.symbol-ref-tabs {
+  display: flex;
+  gap: 6px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 7px;
+  margin-bottom: 2px;
+  flex-wrap: wrap;
+}
+.symbol-ref-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 5px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  color: var(--text2);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .5px;
+  cursor: pointer;
+  border-radius: 2px;
+}
+.symbol-ref-tab:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.symbol-ref-tab.active {
+  background: #0e2018;
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .divider { height: 1px; background: var(--border); }
@@ -798,11 +946,10 @@ body.screenshot-mode .bottom-sheet-bg { display: none !important; }
   #header #autosave-badge{ display: none; }
   #header #coord-bar     { display: none; }
 
-  /* Keep: title, zoom label, undo, redo */
+  /* Keep: title, undo, redo */
   #header h1             { display: flex; }
   #header #btn-undo      { display: flex; align-items: center; }
   #header #btn-redo      { display: flex; align-items: center; }
-  #header #zoom-label    { display: inline; margin-left: auto; }
 
   #header {
     padding: 5px 10px;
@@ -1218,6 +1365,7 @@ body.screenshot-mode .bottom-sheet-bg { display: none !important; }
    fills the view cleanly for the user to screenshot with their own tool. */
 body.screenshot-mode #header     { display: none; }
 body.screenshot-mode #sidebar        { display: none; }
+body.screenshot-mode #symbol-panel   { display: none !important; }
 body.screenshot-mode #bottom-toolbar { display: none !important; }
 body.screenshot-mode #mode-strip     { display: none !important; }
 body.screenshot-mode .ui-switch      { display: none !important; }
@@ -1279,18 +1427,22 @@ body.ui-desktop #sidebar {
   background: var(--panel);
 }
 
-/* Make the Symbols palette section (the second .s-section) always expand
-   and become scrollable in desktop mode — exactly what the user expects. */
-body.ui-desktop #sidebar .s-section:last-child {
-  flex: 1 1 auto;
-  min-height: 0;           /* required for flex child to scroll */
-  overflow-y: auto;
+body.ui-desktop #sidebar .sidebar-symbols {
+  display: none;
 }
 
-body.ui-desktop #sidebar #palette-area {
-  flex: 1 1 auto;
+body.ui-desktop #symbol-panel {
+  display: flex;
+  flex-direction: column;
+  width: clamp(280px, 24vw, 380px);
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  background: var(--panel);
+}
+
+body.ui-desktop #canvas-wrap {
   min-height: 0;
-  overflow-y: auto;
+  min-width: 0;
 }
 
 body.ui-desktop #bottom-toolbar,
@@ -1303,6 +1455,9 @@ body.ui-desktop {
 
 /* ── Forced Mobile Interface ───────────────────────────────── */
 body.ui-mobile #sidebar {
+  display: none !important;
+}
+body.ui-mobile #symbol-panel {
   display: none !important;
 }
 body.ui-mobile #bottom-toolbar {
@@ -1414,6 +1569,7 @@ body.screenshot-mode { padding-bottom: 0 !important; }
   <div class="sep"></div>
   <button class="hbtn" onclick="openGridConfig()">⊞ Grid</button>
   <button class="hbtn" onclick="openPaletteEditor()">✦ Palette</button>
+  <button class="hbtn" onclick="openSymbolReference()">✣ Symbols</button>
   <button class="hbtn" onclick="openGenModal()" style="border-color:#3a5a3a;color:#8ef0a0">⚙ Generate</button>
   <div class="sep"></div>
   <button class="hbtn" onclick="copyActiveMap()" title="Copy active map text to clipboard">⎘ Copy Map</button>
@@ -1424,7 +1580,6 @@ body.screenshot-mode { padding-bottom: 0 !important; }
   <button class="hbtn" id="btn-undo" onclick="undo()" title="Undo (Ctrl+Z)" style="opacity:.4" disabled>↩ Undo</button>
   <button class="hbtn" id="btn-redo" onclick="redo()" title="Redo (Ctrl+Y)" style="opacity:.4" disabled>↪ Redo</button>
   <span id="autosave-badge"></span>
-  <span id="zoom-label" style="font-size:11px;color:var(--text3);letter-spacing:.4px;white-space:nowrap">100%</span>
   <div id="coord-bar">—</div>
 </div>
 
@@ -1463,6 +1618,24 @@ body.screenshot-mode { padding-bottom: 0 !important; }
         <span id="brush-size-lbl" style="font-size:11px;color:var(--text);font-family:var(--mono);width:26px;text-align:right">1×1</span>
       </div>
 
+      <!-- Zoom controls -->
+      <div style="display:flex;align-items:center;gap:6px">
+        <span style="font-size:11px;color:var(--text2);width:68px;flex-shrink:0">Zoom</span>
+        <button class="mode-btn" onclick="zoomBy(0.9)" title="Zoom out" style="font-size:11px;padding:4px 7px;flex:0 0 auto">−</button>
+        <span id="zoom-tool-label" style="font-size:11px;color:var(--text);font-family:var(--mono);width:42px;text-align:center">100%</span>
+        <button class="mode-btn" onclick="zoomBy(1.1)" title="Zoom in" style="font-size:11px;padding:4px 7px;flex:0 0 auto">+</button>
+        <button class="mode-btn" onclick="resetZoom()" title="Reset zoom to 100%" style="font-size:10px;padding:4px 7px;flex:1">100%</button>
+      </div>
+
+      <!-- Brush Mix: weighted multi-symbol painting -->
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:11px;color:var(--text2);width:68px;flex-shrink:0">Brush mix</span>
+        <button class="mode-btn" id="brush-mix-toggle" onclick="toggleBrushMix()" style="font-size:10px;padding:4px 6px;flex:0 0 auto">Mix off</button>
+        <button class="mode-btn" onclick="clearBrushMix()" style="font-size:10px;padding:4px 6px;flex:0 0 auto">Clear</button>
+        <span id="brush-mix-count" style="font-size:11px;color:var(--text2);font-family:var(--mono);flex:1">0 symbols</span>
+      </div>
+      <div id="brush-mix-list" style="display:none;flex-direction:column;gap:4px"></div>
+
       <!-- Fill mode: 4-connected vs 8-connected -->
       <div style="display:flex;align-items:center;gap:8px">
         <span style="font-size:11px;color:var(--text2);width:68px;flex-shrink:0">Fill mode</span>
@@ -1485,7 +1658,7 @@ body.screenshot-mode { padding-bottom: 0 !important; }
     </div>
 
     <!-- Symbols Palette -->
-    <div class="s-section" style="gap:9px">
+    <div class="s-section sidebar-symbols" style="gap:9px">
       <div style="display:flex;align-items:center;justify-content:space-between">
         <div class="s-title">Symbols</div>
         <div id="sel-indicator" style="display:flex;align-items:center;gap:6px">
@@ -1499,7 +1672,7 @@ body.screenshot-mode { padding-bottom: 0 !important; }
           <span id="sel-name" style="font-size:11px;color:var(--text2);letter-spacing:.3px;"></span>
         </div>
       </div>
-      <div id="palette-area"></div>
+      <div id="palette-area" data-palette-host></div>
     </div>
 
   </div>
@@ -1508,6 +1681,35 @@ body.screenshot-mode { padding-bottom: 0 !important; }
   <div id="canvas-wrap">
     <div id="world-grid"></div>
   </div>
+
+  <!-- DESKTOP SYMBOL PANEL -->
+  <aside id="symbol-panel" class="symbol-panel">
+    <div class="symbol-panel-hdr">
+      <div>
+        <div class="s-title">Symbols</div>
+        <div id="symbol-panel-sel-name" style="font-size:11px;color:var(--text2);letter-spacing:.3px;margin-top:4px"></div>
+      </div>
+      <div id="symbol-panel-sel-indicator" style="display:flex;align-items:center;gap:6px">
+        <span id="symbol-panel-sel-char" style="
+          font-family:var(--mono);font-size:18px;font-weight:700;
+          width:32px;height:32px;border-radius:3px;
+          background:#0e2018;border:1px solid var(--accent);
+          display:flex;align-items:center;justify-content:center;
+          color:var(--accent);line-height:1;flex-shrink:0;
+        ">·</span>
+      </div>
+    </div>
+    <div class="symbol-panel-mix">
+      <div class="symbol-panel-mix-row">
+        <span style="font-size:11px;color:var(--text2);width:68px;flex-shrink:0">Brush mix</span>
+        <button class="mode-btn" id="symbol-panel-brush-mix-toggle" onclick="toggleBrushMix()">Mix off</button>
+        <button class="mode-btn" onclick="clearBrushMix()">Clear</button>
+        <span id="symbol-panel-brush-mix-count" style="font-size:11px;color:var(--text2);font-family:var(--mono);flex:1">0 symbols</span>
+      </div>
+      <div id="symbol-panel-brush-mix-list" style="display:none;flex-direction:column;gap:4px"></div>
+    </div>
+    <div class="symbol-panel-scroll" id="symbol-panel-palette" data-palette-host></div>
+  </aside>
 
 </div>
 
@@ -1541,6 +1743,33 @@ body.screenshot-mode { padding-bottom: 0 !important; }
     <div class="modal-foot">
       <button class="sbtn" onclick="closeModal('modal-grid')">Cancel</button>
       <button class="sbtn green" onclick="applyGridConfig()">Apply</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: ASCII / Symbol Reference ══ -->
+<div class="modal-bg" id="modal-symbol-ref">
+  <div class="modal" style="width:760px">
+    <div class="modal-hdr">
+      <h2>ASCII &amp; Symbol Reference</h2>
+      <button class="modal-x" onclick="closeModal('modal-symbol-ref')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="palette-toolbar">
+        <div class="palette-toolbar-row">
+          <button class="sbtn" style="padding:4px 10px;font-size:11px;min-height:auto" onclick="saveSymbolReferenceTxt()">↓ Save .txt</button>
+          <button class="sbtn" style="padding:4px 10px;font-size:11px;min-height:auto" onclick="saveSymbolReferenceHtml()">↓ Save .html</button>
+          <button class="sbtn" style="padding:4px 10px;font-size:11px;min-height:auto" onclick="copySymbolReferenceText()">⎘ Copy list</button>
+        </div>
+      </div>
+      <div class="symbol-ref-tabs">
+        <button class="symbol-ref-tab active" id="symbol-ref-tab-examples" onclick="setSymbolReferenceTab('examples')">Examples</button>
+        <button class="symbol-ref-tab" id="symbol-ref-tab-list" onclick="setSymbolReferenceTab('list')">Complete List</button>
+      </div>
+      <div id="symbol-ref-body" style="display:flex;flex-direction:column;gap:14px"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="sbtn green" onclick="closeModal('modal-symbol-ref')">Done</button>
     </div>
   </div>
 </div>
@@ -1830,21 +2059,11 @@ body.screenshot-mode { padding-bottom: 0 !important; }
         </div>
 
         <div class="divider"></div>
-        <div style="font-size:11px;color:var(--text2)">Channel symbols (from palette):</div>
-        <div style="display:flex;flex-direction:column;gap:5px;margin-top:4px">
-          <div class="modal-row">
-            <span class="modal-lbl" style="width:130px">Stream (\ /)</span>
-            <select id="wtr-sym-stream-a" class="water-sym-pick" style="width:auto;padding:2px 4px;font-size:12px;background:var(--surface);border:1px solid var(--border2);color:var(--text);border-radius:2px"></select>
-            <span class="muted" style="font-size:10px;margin-left:4px">diagonal, short branches</span>
-          </div>
-          <div class="modal-row">
-            <span class="modal-lbl" style="width:130px">River (═ ║)</span>
-            <select id="wtr-sym-river-h" class="water-sym-pick" style="width:auto;padding:2px 4px;font-size:12px;background:var(--surface);border:1px solid var(--border2);color:var(--text);border-radius:2px"></select>
-            <span class="muted" style="font-size:10px;margin-left:4px">horiz</span>
-            <select id="wtr-sym-river-v" class="water-sym-pick" style="width:auto;padding:2px 4px;font-size:12px;background:var(--surface);border:1px solid var(--border2);color:var(--text);border-radius:2px"></select>
-            <span class="muted" style="font-size:10px;margin-left:4px">vert</span>
-          </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+          <span class="s-title">Route Symbols</span>
+          <button class="sbtn" style="padding:3px 9px;font-size:11px" onclick="resetRouteStyleControls('river');resetRouteStyleControls('stream')">↺ Defaults</button>
         </div>
+        <div id="water-route-style-list" style="display:flex;flex-direction:column;gap:7px"></div>
 
         <div class="divider"></div>
         <div style="display:flex;align-items:center;justify-content:space-between">
@@ -1873,13 +2092,12 @@ body.screenshot-mode { padding-bottom: 0 !important; }
       </div><!-- end water panel -->
 
       <!-- ══ TAB: ROADS & PATHS ══
-           Generates roads, paths, and trails on the active structure layer
-           (Underground or Structures). Reuses the river pathfinding algorithm
-           with user-chosen symbols. Terrain layer is unaffected. -->
+           Generates roads, paths, and trails on the active layer. Reuses the
+           river pathfinding algorithm with user-chosen route styles. -->
       <div class="gen-tab-panel" id="gen-panel-roads">
         <div class="muted" style="font-size:10px;line-height:1.5;padding:2px 0 6px">
-          Generates roads and paths on the <strong style="color:var(--accent2)">active structure layer</strong>
-          (Underground or Structures). Switch layers in the sidebar before generating.
+          Generates roads and paths on the <strong style="color:var(--accent2)">active layer</strong>
+          (Terrain, Underground, or Structures). Switch layers before generating.
           Uses the same pathfinding as Rivers — define source → destination pairs below.
         </div>
 
@@ -1887,24 +2105,16 @@ body.screenshot-mode { padding-bottom: 0 !important; }
         <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--surface);border:1px solid var(--border2);border-radius:3px">
           <span style="font-size:11px;color:var(--text2)">Active layer:</span>
           <span id="roads-layer-badge" style="font-size:11px;font-weight:700;color:var(--accent2)">—</span>
-          <span class="muted" style="font-size:10px">(change in sidebar Layers panel)</span>
+          <span class="muted" style="font-size:10px">(change in the Layers panel)</span>
         </div>
 
         <div class="divider"></div>
 
-        <!-- Road symbol -->
-        <div class="param-row">
-          <label>Road symbol</label>
-          <select id="roads-sym-h" style="background:var(--surface);border:1px solid var(--border2);color:var(--text);font-family:var(--mono);font-size:12px;padding:3px 6px;border-radius:2px"></select>
-          <span class="muted" style="font-size:10px;margin-left:4px">horiz</span>
-          <select id="roads-sym-v" style="background:var(--surface);border:1px solid var(--border2);color:var(--text);font-family:var(--mono);font-size:12px;padding:3px 6px;border-radius:2px"></select>
-          <span class="muted" style="font-size:10px;margin-left:4px">vert</span>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+          <span class="s-title">Route Symbols</span>
+          <button class="sbtn" style="padding:3px 9px;font-size:11px" onclick="resetRouteStyleControls('road');resetRouteStyleControls('path')">↺ Defaults</button>
         </div>
-        <div class="param-row">
-          <label>Path symbol</label>
-          <select id="roads-sym-path" style="background:var(--surface);border:1px solid var(--border2);color:var(--text);font-family:var(--mono);font-size:12px;padding:3px 6px;border-radius:2px"></select>
-          <span class="muted" style="font-size:10px;margin-left:4px">diagonal / winding</span>
-        </div>
+        <div id="road-route-style-list" style="display:flex;flex-direction:column;gap:7px"></div>
 
         <div class="divider"></div>
 
@@ -1934,7 +2144,7 @@ body.screenshot-mode { padding-bottom: 0 !important; }
           </div>
         </div>
         <div id="road-pair-list" style="display:flex;flex-direction:column;gap:5px;margin-top:6px"></div>
-        <div class="muted" style="font-size:10px;margin-top:4px">Click Set to pick a cell on the map. Roads use horiz/vert symbols; paths use the diagonal symbol.</div>
+        <div class="muted" style="font-size:10px;margin-top:4px">Click Set to pick a cell on the map. Route symbols are selected from direction changes and colored by route type.</div>
 
         <div class="divider"></div>
 
@@ -2032,6 +2242,12 @@ body.screenshot-mode { padding-bottom: 0 !important; }
       </div>
       <button class="sheet-close" onclick="closeSheet('sheet-palette')">✕</button>
     </div>
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid var(--border)">
+      <button class="tools-btn" id="sheet-brush-mix-toggle" onclick="toggleBrushMix()">Mix off</button>
+      <button class="tools-btn" onclick="clearBrushMix()">Clear</button>
+      <span id="sheet-brush-mix-count" style="font-size:12px;color:var(--text2);font-family:var(--mono);flex:1">0 symbols</span>
+    </div>
+    <div id="sheet-brush-mix-list" style="display:none;flex-direction:column;gap:5px;padding:8px 16px;border-bottom:1px solid var(--border)"></div>
     <div class="sheet-body" id="sheet-palette-body"></div>
   </div>
 </div>
@@ -2167,37 +2383,62 @@ const DEFAULT_CATEGORIES = [
   { id: uid(), name: 'Water', color: '#5aaee8', symbols: [
     { char: '~', name: 'Shallow water', color: '#6ec6f5' },
     { char: '≈', name: 'Deep water',    color: '#1a4e8a' },
+    { char: '≋', name: 'Current',       color: '#2f78b8' },
+    { char: '∿', name: 'Stream',        color: '#7ab8e0' },
     { char: '═', name: 'River (H)',     color: '#4a90c4' },
     { char: '║', name: 'River (V)',     color: '#4a90c4' },
     { char: '\\',name: 'Stream (\\)',   color: '#7ab8e0' },
     { char: '/', name: 'Stream (/)',    color: '#7ab8e0' },
+    { char: '░', name: 'Marsh / mist',  color: '#6f9f9a' },
   ]},
   { id: uid(), name: 'Land', color: '#82c860', symbols: [
-    { char: '.', name: 'Grassland', color: '#50e040' },
-    { char: ',', name: 'Scrub',     color: '#2a6630' },
-    { char: '·', name: 'Plains',    color: '#c8a84a' },
-    { char: '"', name: 'Desert',    color: '#c4a86a' },
-    { char: '∴', name: 'Badlands',  color: '#c05830' },
-    { char: '≡', name: 'Swamp',     color: '#4a7858' },
+    { char: '.', name: 'Grassland',     color: '#50e040' },
+    { char: ',', name: 'Scrub',         color: '#2a6630' },
+    { char: ';', name: 'Sparse scrub',  color: '#5c8a3a' },
+    { char: ':', name: 'Rough soil',    color: '#9a7a4a' },
+    { char: '·', name: 'Open plains',   color: '#c8a84a' },
+    { char: '"', name: 'Dry grass',     color: '#c4a86a' },
+    { char: '_', name: 'Flat ground',   color: '#8fcf70' },
+    { char: '-', name: 'Dry ground',    color: '#b88a4a' },
+    { char: '∴', name: 'Badlands',      color: '#c05830' },
+    { char: '≡', name: 'Swamp',         color: '#4a7858' },
   ]},
   { id: uid(), name: 'Elevation', color: '#c8b898', symbols: [
     { char: '^', name: 'Hills',           color: '#8b6040' },
+    { char: 'n', name: 'Low hill',        color: '#9a704a' },
+    { char: 'm', name: 'Rolling hills',   color: '#a07850' },
+    { char: 'A', name: 'High ridge',      color: '#b8a080' },
     { char: '▲', name: 'Mountain peak',   color: '#ddd8cc' },
+    { char: '▼', name: 'Basin / sink',    color: '#6f5438' },
     { char: '#', name: 'Cliffs',          color: '#7a5030' },
+    { char: 'O', name: 'Boulder field',   color: '#9a9188' },
+    { char: 'o', name: 'Scattered stone', color: '#8a8078' },
     { char: '█', name: 'Impassable rock', color: '#3a2418' },
   ]},
   { id: uid(), name: 'Vegetation', color: '#4ade78', symbols: [
-    { char: 'T', name: 'Tree',         color: '#38a030' },
-    { char: '↑', name: 'Pine',         color: '#2a8828' },
-    { char: '♣', name: 'Dense forest', color: '#1a5c18' },
-    { char: '*', name: 'Brush',        color: '#80c060' },
+    { char: 'T', name: 'Large tree',       color: '#38a030' },
+    { char: 't', name: 'Small tree',       color: '#4caf38' },
+    { char: 'Y', name: 'Forked tree',      color: '#5a9f38' },
+    { char: '↑', name: 'Pine',             color: '#2a8828' },
+    { char: '♣', name: 'Broad canopy',     color: '#1a5c18' },
+    { char: '♠', name: 'Dark canopy',      color: '#123f18' },
+    { char: '♧', name: 'Pale canopy',      color: '#74b86c' },
+    { char: '*', name: 'Brush',            color: '#80c060' },
+    { char: '+', name: 'Thicket',          color: '#5fa044' },
+    { char: '%', name: 'Dense growth',     color: '#3c7a30' },
+    { char: '\'',name: 'Sprout',           color: '#9fe870' },
+    { char: '`', name: 'Seedling',         color: '#b8f080' },
   ]},
-  { id: uid(), name: 'Structures', color: '#f0b858', symbols: [
-    { char: 'o', name: 'Settlement',        color: '#e0c060' },
-    { char: '⌂', name: 'Town',              color: '#e08830' },
-    { char: '+', name: 'Temple / Ruins',    color: '#c0a898' },
-    { char: 'x', name: 'Dungeon entrance',  color: '#9858b8' },
+  { id: uid(), name: 'Features', color: '#f0b858', symbols: [
+    { char: '@', name: 'Landmark',          color: '#f0d070' },
+    { char: '⌂', name: 'Settlement',        color: '#e08830' },
+    { char: '†', name: 'Shrine / ruins',    color: '#c0a898' },
+    { char: 'x', name: 'Cave entrance',     color: '#9858b8' },
     { char: '?', name: 'Point of interest', color: '#58b8d8' },
+    { char: '!', name: 'Hazard',            color: '#e05050' },
+    { char: '$', name: 'Resource',          color: '#f0d040' },
+    { char: '&', name: 'Cluster',           color: '#d0b870' },
+    { char: '¤', name: 'Relic',             color: '#c8b8f0' },
   ]},
   { id: uid(), name: 'Empty', color: '#505878', symbols: [
     { char: ' ', name: 'Clear', color: '' },
@@ -2229,29 +2470,41 @@ let CELL_PX = 22;
 const UNDERGROUND_STARTER = [
   { id: uid(), name: 'Walls', color: '#8a8a8a', symbols: [
     { char: '█', name: 'Solid wall',       color: '#555555' },
+    { char: '■', name: 'Block wall',       color: '#686868' },
+    { char: '□', name: 'Hollow wall',      color: '#7c7c7c' },
     { char: '░', name: 'Rubble',           color: '#7a7060' },
+    { char: '▒', name: 'Broken stone',     color: '#706858' },
     { char: '▓', name: 'Dense rubble',     color: '#6a6050' },
     { char: '|', name: 'Wall (vertical)',  color: '#9a9a9a' },
     { char: '-', name: 'Wall (horiz)',     color: '#9a9a9a' },
     { char: '+', name: 'Wall junction',    color: '#9a9a9a' },
     { char: '#', name: 'Rough wall',       color: '#7a6a5a' },
+    { char: 'O', name: 'Boulder',          color: '#8a847c' },
+    { char: 'o', name: 'Loose stone',      color: '#7a746c' },
   ]},
   { id: uid(), name: 'Floors', color: '#5a5060', symbols: [
     { char: '.', name: 'Stone floor',      color: '#6a6878' },
     { char: '·', name: 'Dirt floor',       color: '#7a6a50' },
     { char: ',', name: 'Gravel',           color: '#6a6060' },
+    { char: ':', name: 'Rough floor',      color: '#776c62' },
+    { char: '_', name: 'Flat chamber',     color: '#6b6470' },
     { char: ' ', name: 'Empty',            color: '' },
   ]},
   { id: uid(), name: 'Features', color: '#b070f0', symbols: [
     { char: '/', name: 'Door (open)',      color: '#c8a060' },
     { char: '\\',name: 'Door (closed)',    color: '#c8a060' },
-    { char: 'x', name: 'Trap',            color: '#e05050' },
-    { char: '$', name: 'Treasure',        color: '#f0d040' },
-    { char: '?', name: 'Unknown',         color: '#60b8e0' },
-    { char: '^', name: 'Stairs up',       color: '#a0c8f0' },
-    { char: 'v', name: 'Stairs down',     color: '#a0c8f0' },
-    { char: 'o', name: 'Pillar',          color: '#8a8a8a' },
-    { char: '~', name: 'Water/pit',       color: '#4080c0' },
+    { char: 'x', name: 'Trap',             color: '#e05050' },
+    { char: '!', name: 'Danger',           color: '#f07050' },
+    { char: '$', name: 'Treasure',         color: '#f0d040' },
+    { char: '?', name: 'Unknown',          color: '#60b8e0' },
+    { char: '@', name: 'Notable site',     color: '#d0a0f0' },
+    { char: '^', name: 'Stairs up',        color: '#a0c8f0' },
+    { char: 'v', name: 'Stairs down',      color: '#a0c8f0' },
+    { char: '▲', name: 'Rise / ledge',     color: '#a0a8b0' },
+    { char: '▼', name: 'Pit / sink',       color: '#405060' },
+    { char: '◆', name: 'Crystal',          color: '#b8f0ff' },
+    { char: '◇', name: 'Pale crystal',     color: '#d8f8ff' },
+    { char: '~', name: 'Water / pool',     color: '#4080c0' },
   ]},
 ];
 
@@ -2260,32 +2513,53 @@ const STRUCTURES_STARTER = [
   { id: uid(), name: 'Buildings', color: '#c8a060', symbols: [
     { char: '█', name: 'Solid wall',       color: '#8a7050' },
     { char: '░', name: 'Wall (light)',     color: '#b09070' },
+    { char: '▓', name: 'Thick wall',       color: '#7c6048' },
     { char: '|', name: 'Wall (vertical)', color: '#c0a878' },
     { char: '-', name: 'Wall (horiz)',    color: '#c0a878' },
     { char: '+', name: 'Wall junction',   color: '#c0a878' },
     { char: '/', name: 'Door (open)',     color: '#e0c080' },
     { char: '\\',name: 'Door (closed)',   color: '#e0c080' },
     { char: '#', name: 'Fence/hedge',     color: '#60a040' },
+    { char: 'H', name: 'House',           color: '#d09058' },
+    { char: 'M', name: 'Market',          color: '#e0b060' },
+    { char: 'W', name: 'Wall / gate',     color: '#b89068' },
+    { char: '⌂', name: 'Dwelling',        color: '#e08830' },
   ]},
   { id: uid(), name: 'Floors', color: '#a09080', symbols: [
     { char: '.', name: 'Floor',           color: '#9a9080' },
     { char: ',', name: 'Cobblestone',     color: '#8a8878' },
+    { char: ':', name: 'Packed floor',    color: '#8d806e' },
+    { char: '·', name: 'Courtyard',       color: '#b0a070' },
+    { char: '_', name: 'Interior floor',  color: '#a89888' },
+    { char: '=', name: 'Planked floor',   color: '#b89260' },
     { char: ' ', name: 'Empty',           color: '' },
   ]},
   { id: uid(), name: 'Roads', color: '#ffcc44', symbols: [
     { char: '═', name: 'Road (horiz)',    color: '#c8b060' },
     { char: '║', name: 'Road (vert)',     color: '#c8b060' },
-    { char: '·', name: 'Path',           color: '#b0a070' },
-    { char: ':', name: 'Dirt road',      color: '#a09060' },
+    { char: '╬', name: 'Road junction',   color: '#d0b868' },
+    { char: '╔', name: 'Road corner',     color: '#d0b868' },
+    { char: '╗', name: 'Road corner',     color: '#d0b868' },
+    { char: '╚', name: 'Road corner',     color: '#d0b868' },
+    { char: '╝', name: 'Road corner',     color: '#d0b868' },
+    { char: '≈', name: 'Busy road',       color: '#d0a850' },
   ]},
   { id: uid(), name: 'Features', color: '#f0b858', symbols: [
     { char: 'o', name: 'Well/fountain',  color: '#60b8e0' },
-    { char: '⌂', name: 'Building',       color: '#e08830' },
+    { char: 'O', name: 'Plaza feature',  color: '#c0b090' },
+    { char: '@', name: 'Landmark',       color: '#f0d070' },
+    { char: '$', name: 'Market stall',   color: '#f0d040' },
+    { char: '&', name: 'Crowd / cluster',color: '#d0b870' },
     { char: 'T', name: 'Tree',           color: '#38a030' },
+    { char: 't', name: 'Small tree',     color: '#4caf38' },
     { char: '*', name: 'Bush/garden',    color: '#60a040' },
-    { char: '+', name: 'Temple/shrine',  color: '#c0a898' },
+    { char: '¤', name: 'Temple/shrine',  color: '#c0a898' },
     { char: 'x', name: 'Marker/sign',   color: '#e05050' },
+    { char: '!', name: 'Warning sign',   color: '#f07050' },
     { char: '?', name: 'Point of int.',  color: '#58b8d8' },
+    { char: '†', name: 'Grave',          color: '#b8b0a8' },
+    { char: '‡', name: 'Monument',       color: '#d8d0c8' },
+    { char: '⌘', name: 'Civic site',     color: '#c8b8f0' },
   ]},
 ];
 
@@ -2372,6 +2646,8 @@ let currentChar  = '.';     // symbol being painted
 let currentColor = '';      // per-cell color override for painting ('' = use palette color)
 let mode         = 'select'; // 'paint' | 'erase' | 'fill' | 'select'
 let isPainting   = false;   // true while mouse button is held on a cell
+let brushMixEnabled = false; // true = palette clicks build a weighted multi-symbol brush
+let brushMix = [];           // { char, color, name, weight }
 
 // Brush size — 0=1×1, 1=3×3, 2=5×5, 3=7×7
 let brushSize    = 0;
@@ -2401,6 +2677,13 @@ let _pinchStartScale = 1;
 let _zoomScale    = 1;      // current zoom level
 const ZOOM_MIN    = 0.25;
 const ZOOM_MAX    = 4.0;
+
+// Desktop Shift-drag panning state
+let _mousePanActive = false;
+let _mousePanStartX = 0;
+let _mousePanStartY = 0;
+let _mousePanOriginX = 0;
+let _mousePanOriginY = 0;
 const undoStack = [];
 const redoStack = [];
 const MAX_UNDO  = 50;  // cap to avoid unbounded memory growth
@@ -2452,10 +2735,16 @@ function pushUndo() {
 
 /** Restores a snapshot into maps + cellColors and re-renders all tiles. */
 function applySnapshot(snap) {
+  const layer = activeLayer();
   snap.maps.forEach((rows, mi) => {
     maps[mi] = rows.map(row => Array.from(row.padEnd(TILE_W, ' ')));
   });
-  cellColors = Object.assign({}, snap.cellColors);
+  if (layer) {
+    layer.cellColors = Object.assign({}, snap.cellColors);
+    cellColors = layer.cellColors;
+  } else {
+    cellColors = Object.assign({}, snap.cellColors);
+  }
   const total = GRID_COLS * GRID_ROWS;
   for (let i = 0; i < total; i++) refreshMap(i);
 }
@@ -2523,6 +2812,10 @@ function buildProjectJSON() {
       cellColors: Object.assign({}, layer.cellColors),
     })),
     genPresets: deepClone(genPresets),
+    generationState: {
+      riverPairs: deepClone(riverPairs),
+      roadPairs: deepClone(roadPairs),
+    },
   };
 }
 
@@ -2543,6 +2836,8 @@ function applyProjectJSON(s) {
   CELL_PX     = s.cellPx   || 22;
   activeMap   = 0;
   genPresets  = Array.isArray(s.genPresets) ? deepClone(s.genPresets) : [];
+  riverPairs  = Array.isArray(s.generationState?.riverPairs) ? deepClone(s.generationState.riverPairs) : [];
+  roadPairs   = Array.isArray(s.generationState?.roadPairs)  ? deepClone(s.generationState.roadPairs)  : [];
 
   if (s.version === 2 && Array.isArray(s.layers) && s.layers.length > 0) {
     // ── v2: restore full layer array ──
@@ -2570,6 +2865,7 @@ function applyProjectJSON(s) {
       layers.push(makeLayer(next.id, next.name, next.cats, next.visible));
     }
     activeLayerIdx = clamp(s.activeLayerIdx || 0, 0, layers.length - 1);
+    upgradeStarterPalettes();
     normalizeActiveLayer();
     syncLayerRefs();
 
@@ -2596,6 +2892,7 @@ function applyProjectJSON(s) {
       makeLayer('structures',  'Structures',  deepClone(STRUCTURES_STARTER), false),
     ];
     activeLayerIdx = 0;
+    upgradeStarterPalettes();
     syncLayerRefs();
   }
 
@@ -2605,19 +2902,139 @@ function applyProjectJSON(s) {
 /** Deep-clones any JSON-serialisable value. */
 function deepClone(obj) { return JSON.parse(JSON.stringify(obj)); }
 
-// Debounced autosave — fires 900 ms after the last change.
+/** Merges missing starter symbols into restored projects without overwriting custom palette entries. */
+function upgradeStarterPalettes() {
+  layers.forEach(layer => mergeMissingStarterSymbols(layer));
+}
+
+/** Adds any missing built-in symbols to a layer, preserving existing symbols by character. */
+function mergeMissingStarterSymbols(layer) {
+  if (!layer || !Array.isArray(layer.categories)) return;
+  const starter = defaultPaletteForLayerId(layer.id);
+  const existingChars = new Set();
+  layer.categories.forEach(cat => {
+    if (!Array.isArray(cat.symbols)) cat.symbols = [];
+    cat.symbols.forEach(sym => existingChars.add(sym.char));
+  });
+
+  starter.forEach(starterCat => {
+    const missing = starterCat.symbols.filter(sym => !existingChars.has(sym.char));
+    if (!missing.length) return;
+
+    let target = layer.categories.find(cat => cat.name === starterCat.name);
+    if (!target) {
+      target = {
+        id: uid(),
+        name: starterCat.name,
+        color: starterCat.color,
+        symbols: [],
+      };
+      layer.categories.push(target);
+    }
+
+    missing.forEach(sym => {
+      target.symbols.push(deepClone(sym));
+      existingChars.add(sym.char);
+    });
+  });
+}
+
+/** Parses optional biome composition encoded in a symbol name for engine-facing exports. */
+function parseSymbolBiomeName(rawName) {
+  const text = String(rawName ?? '');
+  const [displayPart, ...metaParts] = text.split('|');
+  const displayName = displayPart.trim() || text.trim();
+  const meta = metaParts.join('|').trim();
+  if (!meta) return { name: displayName };
+
+  const entries = meta.split(',')
+    .map(item => item.trim())
+    .filter(Boolean)
+    .map(item => {
+      const match = item.match(/^([^:=]+?)\s*[:=]\s*(-?\d+(?:\.\d+)?)\s*$/);
+      if (!match) return { id: item, weight: null };
+      return { id: match[1].trim(), weight: parseFloat(match[2]) };
+    })
+    .filter(entry => entry.id);
+
+  if (!entries.length) return { name: displayName };
+
+  const biomeData = {};
+  const explicitTotal = entries.reduce((sum, entry) =>
+    Number.isFinite(entry.weight) ? sum + entry.weight : sum, 0);
+  const unweighted = entries.filter(entry => !Number.isFinite(entry.weight));
+  const fallbackWeight = unweighted.length ? Math.max(0, 100 - explicitTotal) / unweighted.length : 0;
+
+  entries.forEach(entry => {
+    const weight = Number.isFinite(entry.weight) ? entry.weight : fallbackWeight;
+    biomeData[entry.id] = (biomeData[entry.id] || 0) + weight;
+  });
+
+  return { name: displayName, biomeData };
+}
+
+/** Returns a symbol clone with parsed biome metadata when its name uses `Display | species:weight`. */
+function symbolForJsonExport(sym) {
+  const out = deepClone(sym);
+  const parsed = parseSymbolBiomeName(out.name);
+  out.name = parsed.name;
+  if (parsed.biomeData) out.biomeData = parsed.biomeData;
+  return out;
+}
+
+/** Returns palette categories with export-only symbol metadata parsed for downstream engines. */
+function categoriesForJsonExport(rawCategories) {
+  return deepClone(rawCategories || []).map(cat => ({
+    ...cat,
+    symbols: Array.isArray(cat.symbols) ? cat.symbols.map(symbolForJsonExport) : [],
+  }));
+}
+
+/** Builds the downloadable project JSON with parsed symbol biome metadata. */
+function buildProjectExportJSON() {
+  const project = deepClone(buildProjectJSON());
+  project.layers = project.layers.map(layer => ({
+    ...layer,
+    categories: categoriesForJsonExport(layer.categories),
+  }));
+  return project;
+}
+
+// Autosave — ordinary edits debounce, generation and page unload flush immediately.
 // Silently fails when running from file:// (localStorage blocked by browser security).
 let _saveTimer = null;
+function persistAutosave(showBadge = true) {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(buildProjectJSON()));
+    if (showBadge) {
+      const t = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+      setAutosaveBadge(`autosaved ${t}`);
+    }
+    return true;
+  } catch(e) {
+    if (showBadge) setAutosaveBadge('autosave failed');
+    return false;
+  }
+}
+
 function scheduleAutosave() {
   clearTimeout(_saveTimer);
   _saveTimer = setTimeout(() => {
-    try {
-      localStorage.setItem(LS_KEY, JSON.stringify(buildProjectJSON()));
-      const t = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-      setAutosaveBadge(`autosaved ${t}`);
-    } catch(e) { setAutosaveBadge('autosave failed'); }
+    _saveTimer = null;
+    persistAutosave(true);
   }, 900);
 }
+
+function flushAutosave() {
+  if (_saveTimer) {
+    clearTimeout(_saveTimer);
+    _saveTimer = null;
+  }
+  persistAutosave(false);
+}
+
+window.addEventListener('pagehide', flushAutosave);
+window.addEventListener('beforeunload', flushAutosave);
 
 function setAutosaveBadge(msg) {
   document.getElementById('autosave-badge').textContent = msg;
@@ -2639,6 +3056,8 @@ function confirmNewProject() {
   projectName = name;
   GRID_COLS = 3; GRID_ROWS = 3; TILE_W = 18; TILE_H = 18; CELL_PX = 22;
   activeMap  = 0;
+  brushMixEnabled = false;
+  brushMix = [];
   // Re-initialize the full three-layer system with default palettes and empty maps
   initLayers();
   clearSelection();
@@ -2655,7 +3074,7 @@ function confirmNewProject() {
 // ── Save project as .json ──
 function saveProject() {
   const slug  = projectName.replace(/[^a-z0-9_\-]/gi, '_') || 'project';
-  dlFile(slug + '.json', JSON.stringify(buildProjectJSON(), null, 2));
+  dlFile(slug + '.json', JSON.stringify(buildProjectExportJSON(), null, 2));
   const t = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
   setAutosaveBadge(`saved ${t}`);
   toast(`Saved ${slug}.json`);
@@ -2673,6 +3092,8 @@ async function loadProjectFile(event) {
   try {
     const s = JSON.parse(await file.text());
     if (!applyProjectJSON(s)) { toast('Invalid project file'); return; }
+    brushMixEnabled = false;
+    brushMix = [];
     clearSelection();
     buildGrid();
     buildPalette();
@@ -2742,6 +3163,7 @@ function boot() {
   setProjectNameUI();
   updateToolbarSymbol();
   updateToolbarMode();
+  updateZoomUI();
 
   if (restored) {
     setAutosaveBadge('restored from autosave');
@@ -2773,9 +3195,9 @@ function buildGrid() {
         const cell = document.createElement('div');
         cell.className = 'cell';
         cell.dataset.mi = mi; cell.dataset.r = r; cell.dataset.c = c;
-        const ch = maps[mi][r][c];
-        cell.textContent = ch === ' ' ? '' : ch;
-        applyColor(cell, ch, cellColors[`${mi},${r},${c}`] || '');
+        const rendered = getCompositeCell(mi, r, c);
+        cell.textContent = rendered.ch === ' ' ? '' : rendered.ch;
+        cell.style.color = rendered.color || 'var(--text)';
         cell.addEventListener('mousedown', onCellDown);
         cell.addEventListener('mouseenter', onCellEnter);
         tile.appendChild(cell);
@@ -2792,11 +3214,14 @@ function buildGrid() {
   wrap.addEventListener('wheel', e => {
     if (!e.ctrlKey && !e.metaKey) return; // only Ctrl+scroll
     e.preventDefault();
-    const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    applyZoom(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, _zoomScale * delta)));
+    zoomBy(e.deltaY > 0 ? 0.9 : 1.1);
   }, { passive: false });
 
   wrap.addEventListener('mousedown', e => {
+    if (e.shiftKey && e.button === 0) {
+      beginMousePan(e);
+      return;
+    }
     if (e.target === wrap || e.target === wg) {
       clearSelection();
       activeMap = -1;
@@ -2826,13 +3251,521 @@ function applyColor(cell, ch, override) {
   cell.style.color = (override || colorForChar(ch)) || 'var(--text)';
 }
 
+/** Returns a stable key for palette symbols used by the brush mix. */
+function brushMixKey(char) {
+  return String(char ?? '');
+}
+
+/** Returns true when a symbol is currently part of the brush mix. */
+function isInBrushMix(char) {
+  const key = brushMixKey(char);
+  return brushMix.some(item => brushMixKey(item.char) === key);
+}
+
+/** Adds or removes one symbol from the weighted brush mix. */
+function toggleBrushMixSymbol(sym, cat) {
+  const key = brushMixKey(sym.char);
+  const idx = brushMix.findIndex(item => brushMixKey(item.char) === key);
+  if (idx >= 0) {
+    brushMix.splice(idx, 1);
+  } else {
+    brushMix.push({
+      char: sym.char,
+      color: sym.color || cat.color || '',
+      name: sym.name || sym.char,
+      weight: 1,
+    });
+  }
+  renderBrushMix();
+  refreshActiveBtns();
+}
+
+/** Toggles weighted multi-symbol brush selection on/off. */
+function toggleBrushMix() {
+  brushMixEnabled = !brushMixEnabled;
+  if (brushMixEnabled && brushMix.length === 0 && currentChar) {
+    brushMix.push({
+      char: currentChar,
+      color: currentColor,
+      name: selectedSymbolName() || currentChar,
+      weight: 1,
+    });
+  }
+  renderBrushMix();
+  refreshActiveBtns();
+}
+
+/** Clears the weighted brush mix without changing the current single symbol. */
+function clearBrushMix() {
+  brushMix = [];
+  renderBrushMix();
+  refreshActiveBtns();
+}
+
+/** Returns the current single-symbol display name. */
+function selectedSymbolName() {
+  for (const cat of categories) {
+    const s = cat.symbols.find(s => s.char === currentChar);
+    if (s) return s.name;
+  }
+  return '';
+}
+
+/** Renders desktop/mobile brush mix controls and weight inputs. */
+function renderBrushMix() {
+  const countText = `${brushMix.length} symbol${brushMix.length === 1 ? '' : 's'}`;
+  const toggleText = brushMixEnabled ? 'Mix on' : 'Mix off';
+  const btn = document.getElementById('brush-mix-toggle');
+  const sheetBtn = document.getElementById('sheet-brush-mix-toggle');
+  const panelBtn = document.getElementById('symbol-panel-brush-mix-toggle');
+  const count = document.getElementById('brush-mix-count');
+  const sheetCount = document.getElementById('sheet-brush-mix-count');
+  const panelCount = document.getElementById('symbol-panel-brush-mix-count');
+  const list = document.getElementById('brush-mix-list');
+
+  [btn, sheetBtn, panelBtn].forEach(el => {
+    if (!el) return;
+    el.textContent = toggleText;
+    el.classList.toggle('active', brushMixEnabled);
+  });
+  if (count) count.textContent = countText;
+  if (sheetCount) sheetCount.textContent = countText;
+  if (panelCount) panelCount.textContent = countText;
+  renderBrushMixList(list, 'mode-btn');
+  renderBrushMixList(document.getElementById('sheet-brush-mix-list'), 'tools-btn');
+  renderBrushMixList(document.getElementById('symbol-panel-brush-mix-list'), 'mode-btn');
+}
+
+/** Renders one brush mix weight editor list. */
+function renderBrushMixList(list, removeBtnClass) {
+  if (!list) return;
+  list.style.display = brushMix.length ? 'flex' : 'none';
+  list.innerHTML = '';
+  brushMix.forEach((item, idx) => {
+    const row = document.createElement('div');
+    row.style.display = 'grid';
+    row.style.gridTemplateColumns = '28px minmax(0, 1fr) 54px 28px';
+    row.style.alignItems = 'center';
+    row.style.gap = '5px';
+
+    const glyph = document.createElement('span');
+    glyph.textContent = item.char === ' ' ? '·' : item.char;
+    glyph.style.color = item.color || colorForChar(item.char) || 'var(--text)';
+    glyph.style.fontFamily = 'var(--mono)';
+    glyph.style.fontWeight = '700';
+    glyph.style.textAlign = 'center';
+
+    const name = document.createElement('span');
+    name.textContent = item.name || item.char;
+    name.style.fontSize = '11px';
+    name.style.color = 'var(--text2)';
+    name.style.overflow = 'hidden';
+    name.style.textOverflow = 'ellipsis';
+    name.style.whiteSpace = 'nowrap';
+
+    const weight = document.createElement('input');
+    weight.type = 'number';
+    weight.min = '0';
+    weight.step = '1';
+    weight.value = item.weight;
+    weight.title = 'Paint weight';
+    weight.style.width = '54px';
+    weight.oninput = e => {
+      brushMix[idx].weight = Math.max(0, parseFloat(e.target.value) || 0);
+    };
+
+    const remove = document.createElement('button');
+    remove.className = removeBtnClass;
+    remove.textContent = 'x';
+    remove.title = 'Remove from brush mix';
+    remove.style.padding = '2px 5px';
+    remove.onclick = () => {
+      brushMix.splice(idx, 1);
+      renderBrushMix();
+      refreshActiveBtns();
+    };
+
+    row.append(glyph, name, weight, remove);
+    list.appendChild(row);
+  });
+}
+
+/** Picks one symbol for a single painted cell, honoring brush mix weights. */
+function pickBrushSymbol() {
+  const activeMix = brushMixEnabled && brushMix.length > 0 ? brushMix : null;
+  if (!activeMix) return { char: currentChar, color: currentColor };
+
+  const weighted = activeMix.map(item => ({
+    ...item,
+    weight: Math.max(0, Number(item.weight) || 0),
+  }));
+  const total = weighted.reduce((sum, item) => sum + item.weight, 0);
+  if (total <= 0) {
+    const item = weighted[Math.floor(Math.random() * weighted.length)];
+    return { char: item.char, color: item.color || '' };
+  }
+
+  let roll = Math.random() * total;
+  for (const item of weighted) {
+    roll -= item.weight;
+    if (roll <= 0) return { char: item.char, color: item.color || '' };
+  }
+  const last = weighted[weighted.length - 1];
+  return { char: last.char, color: last.color || '' };
+}
+
+const SYMBOL_REFERENCE_GROUPS = [
+  {
+    name: 'Terrain & Ground',
+    items: [
+      ['.', 'open ground'], [',', 'grit'], [';', 'scrub'], [':', 'rough soil'],
+      ['_', 'flat ground'], ['-', 'dry ground'], ['=', 'packed earth'], ['~', 'water'],
+      ['^', 'peak'], ['A', 'high ridge'], ['n', 'low hill'], ['m', 'rolling hills'],
+    ],
+  },
+  {
+    name: 'Vegetation',
+    items: [
+      ['"', 'grass'], ["'", 'sprout'], ['`', 'seedling'], ['*', 'brush'],
+      ['+', 'thicket'], ['T', 'large tree'], ['t', 'small tree'], ['Y', 'forked tree'],
+      ['♣', 'broad canopy'], ['♠', 'dark canopy'], ['♧', 'pale canopy'], ['%', 'dense growth'],
+    ],
+  },
+  {
+    name: 'Water & Weather',
+    items: [
+      ['~', 'ripples'], ['≈', 'waves'], ['≋', 'current'], ['░', 'mist'],
+      ['▒', 'rain'], ['▓', 'heavy rain'], ['☼', 'sun'], ['☾', 'moon'],
+      ['☁', 'cloud'], ['☂', 'storm'], ['∿', 'stream'], ['≈', 'shore water'],
+    ],
+  },
+  {
+    name: 'Stone & Caverns',
+    items: [
+      ['#', 'stone wall'], ['O', 'boulder'], ['o', 'stone'], ['0', 'round stone'],
+      ['@', 'notable stone'], ['◆', 'crystal'], ['◇', 'pale crystal'], ['▲', 'outcrop'],
+      ['▼', 'sink'], ['■', 'block'], ['□', 'hollow block'], ['·', 'cave floor'],
+    ],
+  },
+  {
+    name: 'Paths & Structures',
+    items: [
+      ['+', 'crossing'], ['-', 'horizontal path'], ['|', 'vertical path'], ['/', 'diagonal path'],
+      ['\\', 'diagonal path'], ['=', 'road'], ['═', 'wide road'], ['║', 'wide road'],
+      ['╬', 'junction'], ['╔', 'corner'], ['╗', 'corner'], ['╚', 'corner'],
+      ['╝', 'corner'], ['H', 'house'], ['M', 'market'], ['W', 'wall'],
+    ],
+  },
+  {
+    name: 'Markers & Features',
+    items: [
+      ['!', 'warning'], ['?', 'unknown'], ['x', 'mark'], ['X', 'major mark'],
+      ['$', 'resource'], ['&', 'cluster'], ['@', 'point of interest'], ['¤', 'relic'],
+      ['†', 'grave'], ['‡', 'monument'], ['⌂', 'dwelling'], ['⌘', 'site'],
+    ],
+  },
+  {
+    name: 'Simple Shading',
+    items: [
+      [' ', 'space'], ['.', 'light scatter'], ['·', 'dot'], [':', 'speckle'],
+      ['░', 'light shade'], ['▒', 'medium shade'], ['▓', 'dark shade'], ['█', 'solid'],
+      ['▴', 'small rise'], ['▾', 'small dip'], ['▪', 'small block'], ['▫', 'small hollow'],
+    ],
+  },
+];
+
+const ASCII_CODE_NAMES = {
+  32: 'Space',
+  33: 'Exclamation mark',
+  34: 'Double quote',
+  35: 'Number sign',
+  36: 'Dollar sign',
+  37: 'Percent sign',
+  38: 'Ampersand',
+  39: 'Apostrophe',
+  40: 'Left parenthesis',
+  41: 'Right parenthesis',
+  42: 'Asterisk',
+  43: 'Plus sign',
+  44: 'Comma',
+  45: 'Hyphen-minus',
+  46: 'Period',
+  47: 'Slash',
+  48: 'Digit zero',
+  57: 'Digit nine',
+  58: 'Colon',
+  59: 'Semicolon',
+  60: 'Less-than sign',
+  61: 'Equals sign',
+  62: 'Greater-than sign',
+  63: 'Question mark',
+  64: 'At sign',
+  91: 'Left square bracket',
+  92: 'Backslash',
+  93: 'Right square bracket',
+  94: 'Caret',
+  95: 'Underscore',
+  96: 'Grave accent',
+  123: 'Left curly brace',
+  124: 'Vertical bar',
+  125: 'Right curly brace',
+  126: 'Tilde',
+};
+
+const PRINTABLE_ASCII_GROUPS = [
+  { name: 'ASCII 32-47: Space & Punctuation', start: 32, end: 47 },
+  { name: 'ASCII 48-64: Digits & Punctuation', start: 48, end: 64 },
+  { name: 'ASCII 65-90: Uppercase Letters', start: 65, end: 90 },
+  { name: 'ASCII 91-96: Brackets & Marks', start: 91, end: 96 },
+  { name: 'ASCII 97-122: Lowercase Letters', start: 97, end: 122 },
+  { name: 'ASCII 123-126: Braces & Tilde', start: 123, end: 126 },
+].map(group => ({
+  name: group.name,
+  items: Array.from({ length: group.end - group.start + 1 }, (_, i) => {
+    const code = group.start + i;
+    const symbol = String.fromCharCode(code);
+    const label = ASCII_CODE_NAMES[code] || (code >= 48 && code <= 57
+      ? `Digit ${symbol}`
+      : code >= 65 && code <= 90
+        ? `Uppercase ${symbol}`
+        : code >= 97 && code <= 122
+          ? `Lowercase ${symbol}`
+          : `ASCII ${code}`);
+    return [symbol, `${code} / 0x${code.toString(16).toUpperCase().padStart(2, '0')} / ${label}`];
+  }),
+}));
+
+function curatedSymbolLabels() {
+  const labels = new Map();
+  SYMBOL_REFERENCE_GROUPS.forEach(group => {
+    group.items.forEach(([symbol, label]) => {
+      if (!labels.has(symbol)) labels.set(symbol, []);
+      const list = labels.get(symbol);
+      if (!list.includes(label)) list.push(label);
+    });
+  });
+  return labels;
+}
+
+const CURATED_SYMBOL_LABELS = curatedSymbolLabels();
+const PRINTABLE_ASCII_SYMBOLS = new Set(PRINTABLE_ASCII_GROUPS.flatMap(group =>
+  group.items.map(([symbol]) => symbol)));
+const ADDITIONAL_CURATED_SYMBOLS = Array.from(CURATED_SYMBOL_LABELS.entries())
+  .filter(([symbol]) => !PRINTABLE_ASCII_SYMBOLS.has(symbol))
+  .sort(([a], [b]) => a.localeCompare(b))
+  .map(([symbol, labels]) => [symbol, labels.join(' / ')]);
+
+const COMPLETE_SYMBOL_REFERENCE_GROUPS = [
+  ...PRINTABLE_ASCII_GROUPS,
+  {
+    name: 'Additional Curated Symbols',
+    items: ADDITIONAL_CURATED_SYMBOLS,
+  },
+];
+
+let symbolReferenceTab = 'examples';
+
+/** Opens and renders the reusable ASCII/symbol reference modal. */
+function openSymbolReference() {
+  renderSymbolReference();
+  openModal('modal-symbol-ref');
+}
+
+/** Switches between curated symbol examples and the printable ASCII table. */
+function setSymbolReferenceTab(tab) {
+  symbolReferenceTab = tab === 'list' ? 'list' : 'examples';
+  renderSymbolReference();
+}
+
+/** Renders symbol reference groups with one-click copy buttons. */
+function renderSymbolReference() {
+  const body = document.getElementById('symbol-ref-body');
+  if (!body) return;
+  body.innerHTML = '';
+  document.getElementById('symbol-ref-tab-examples')?.classList.toggle('active', symbolReferenceTab === 'examples');
+  document.getElementById('symbol-ref-tab-list')?.classList.toggle('active', symbolReferenceTab === 'list');
+
+  const groups = symbolReferenceTab === 'list' ? COMPLETE_SYMBOL_REFERENCE_GROUPS : SYMBOL_REFERENCE_GROUPS;
+  groups.forEach(group => {
+    const section = document.createElement('section');
+    section.className = 'symbol-ref-section';
+
+    const title = document.createElement('div');
+    title.className = 'symbol-ref-title';
+    title.textContent = group.name;
+
+    const grid = document.createElement('div');
+    grid.className = 'symbol-ref-grid';
+
+    group.items.forEach(([symbol, label]) => {
+      const item = document.createElement('div');
+      item.className = 'symbol-ref-item';
+      item.title = `${label}: ${symbol === ' ' ? 'space' : symbol}`;
+
+      const glyph = document.createElement('span');
+      glyph.className = 'symbol-ref-char';
+      glyph.textContent = symbol === ' ' ? '␠' : symbol;
+
+      const name = document.createElement('span');
+      name.className = 'symbol-ref-label';
+      name.textContent = label;
+
+      const copy = document.createElement('button');
+      copy.className = 'sbtn';
+      copy.textContent = 'Copy';
+      copy.style.padding = '3px 6px';
+      copy.style.fontSize = '10px';
+      copy.style.minHeight = 'auto';
+      copy.onclick = () => copySymbolReferenceSymbol(symbol, label);
+
+      item.append(glyph, name, copy);
+      grid.appendChild(item);
+    });
+
+    section.append(title, grid);
+    body.appendChild(section);
+  });
+}
+
+/** Plain-text symbol reference export. */
+function buildSymbolReferenceText() {
+  const lines = [
+    'TERRASCII ASCII & SYMBOL REFERENCE',
+    `Exported: ${new Date().toISOString()}`,
+    '',
+    '=== TERRASCII USAGE EXAMPLES ===',
+    '',
+  ];
+  SYMBOL_REFERENCE_GROUPS.forEach(group => {
+    lines.push(`[${group.name}]`);
+    group.items.forEach(([symbol, label]) => {
+      lines.push(`${symbol === ' ' ? 'SPACE' : symbol} = ${label}`);
+    });
+    lines.push('');
+  });
+  lines.push('=== COMPLETE SYMBOL LIST ===', '');
+  COMPLETE_SYMBOL_REFERENCE_GROUPS.forEach(group => {
+    lines.push(`[${group.name}]`);
+    group.items.forEach(([symbol, label]) => {
+      lines.push(`${symbol === ' ' ? 'SPACE' : symbol} = ${label}`);
+    });
+    lines.push('');
+  });
+  return lines.join('\n').trimEnd() + '\n';
+}
+
+/** Standalone HTML symbol reference export. */
+function buildSymbolReferenceHtml() {
+  const exampleSections = SYMBOL_REFERENCE_GROUPS.map(group => `
+    <section>
+      <h2>${escapeHtml(group.name)}</h2>
+      <div class="grid">
+        ${group.items.map(([symbol, label]) => `
+          <div class="item">
+            <span class="glyph">${escapeHtml(symbol === ' ' ? '␠' : symbol)}</span>
+            <span class="label">${escapeHtml(label)}</span>
+          </div>`).join('\n')}
+      </div>
+    </section>`).join('\n');
+  const listSections = COMPLETE_SYMBOL_REFERENCE_GROUPS.map(group => `
+    <section>
+      <h2>${escapeHtml(group.name)}</h2>
+      <div class="grid">
+        ${group.items.map(([symbol, label]) => `
+          <div class="item">
+            <span class="glyph">${escapeHtml(symbol === ' ' ? '␠' : symbol)}</span>
+            <span class="label">${escapeHtml(label)}</span>
+          </div>`).join('\n')}
+      </div>
+    </section>`).join('\n');
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TERRASCII ASCII & Symbol Reference</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; padding: 24px; background: #0f1218; color: #e8eaf2; font-family: monospace; }
+  h1 { margin: 0 0 8px; color: #5bf5c8; font-size: 22px; }
+  h2 { margin: 22px 0 10px; color: #ffcc44; font-size: 15px; text-transform: uppercase; letter-spacing: 1.5px; }
+  .meta { color: #9aa3b8; font-size: 12px; margin-bottom: 16px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 6px; }
+  .item { display: grid; grid-template-columns: 34px 1fr; gap: 8px; align-items: center; padding: 7px; border: 1px solid #2a2f3f; background: #151922; border-radius: 4px; }
+  .glyph { display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; background: #090b10; border: 1px solid #394052; color: #5bf5c8; font-weight: 700; font-size: 17px; }
+  .label { color: #c7ccda; font-size: 12px; }
+</style>
+</head>
+<body>
+  <h1>TERRASCII ASCII & Symbol Reference</h1>
+  <div class="meta">Exported ${escapeHtml(new Date().toLocaleString())}</div>
+  <h2>Terrascii Usage Examples</h2>
+  ${exampleSections}
+  <h2>Complete Symbol List</h2>
+  ${listSections}
+</body>
+</html>`;
+}
+
+function saveSymbolReferenceTxt() {
+  dlFile('terrascii_symbol_reference.txt', buildSymbolReferenceText());
+  toast('Saved symbol reference (.txt)');
+}
+
+function saveSymbolReferenceHtml() {
+  dlFile('terrascii_symbol_reference.html', buildSymbolReferenceHtml(), 'text/html;charset=utf-8');
+  toast('Saved symbol reference (.html)');
+}
+
+function copySymbolReferenceText() {
+  copyTextToClipboard(buildSymbolReferenceText(), 'Copied symbol reference');
+}
+
+function copySymbolReferenceSymbol(symbol, label) {
+  copyTextToClipboard(symbol, `Copied ${label}`);
+}
+
+/** Clipboard helper with a textarea fallback for file:// contexts. */
+function copyTextToClipboard(text, message = 'Copied') {
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).then(() => toast(message)).catch(() => fallbackCopyText(text, message));
+    return;
+  }
+  fallbackCopyText(text, message);
+}
+
+function fallbackCopyText(text, message) {
+  const el = document.createElement('textarea');
+  el.value = text;
+  el.setAttribute('readonly', '');
+  el.style.position = 'fixed';
+  el.style.left = '-9999px';
+  document.body.appendChild(el);
+  el.select();
+  try {
+    document.execCommand('copy');
+    toast(message);
+  } catch (_) {
+    toast('Copy failed');
+  }
+  document.body.removeChild(el);
+}
+
 /* ════════════════════════════════════════════
    PALETTE BUILD
    Builds the sidebar symbol palette from the categories array.
    Symbols show a tooltip with their name on hover.
 ════════════════════════════════════════════ */
 function buildPalette() {
-  const area = document.getElementById('palette-area');
+  document.querySelectorAll('[data-palette-host]').forEach(area => renderPaletteInto(area));
+  renderBrushMix();
+  refreshActiveBtns();
+}
+
+/** Renders the active layer palette into one palette host. */
+function renderPaletteInto(area) {
+  if (!area) return;
   area.innerHTML = '';
   for (const cat of categories) {
     if (!cat.symbols.length) continue;
@@ -2854,16 +3787,20 @@ function buildPalette() {
     block.append(hdr, row);
     area.appendChild(block);
   }
-  updateSelIndicator();
 }
 
 /** Creates a clickable symbol button for the sidebar palette. */
 function makeSymBtn(sym, cat) {
   const btn = document.createElement('button');
-  btn.className = 'sym-btn' + (sym.char === currentChar ? ' active' : '');
+  btn.className = 'sym-btn';
+  btn.dataset.char = sym.char;
   btn.textContent = sym.char === ' ' ? '·' : sym.char;
   btn.style.color = sym.color || cat.color || 'var(--text)';
   btn.onclick = () => {
+    if (brushMixEnabled) {
+      toggleBrushMixSymbol(sym, cat);
+      return;
+    }
     currentChar  = sym.char;
     currentColor = sym.color || cat.color || '';
     refreshActiveBtns();
@@ -2877,8 +3814,12 @@ function makeSymBtn(sym, cat) {
 /** Refreshes the active highlight on all palette buttons to match currentChar. */
 function refreshActiveBtns() {
   document.querySelectorAll('.sym-btn').forEach(btn => {
-    const ch = btn.textContent === '·' ? ' ' : btn.textContent;
-    btn.classList.toggle('active', ch === currentChar);
+    const ch = btn.dataset.char;
+    btn.classList.toggle('active', brushMixEnabled ? isInBrushMix(ch) : ch === currentChar);
+  });
+  document.querySelectorAll('.sheet-sym-btn').forEach(btn => {
+    const ch = btn.dataset.char;
+    btn.classList.toggle('active', brushMixEnabled ? isInBrushMix(ch) : ch === currentChar);
   });
   updateSelIndicator();
   updateToolbarSymbol();
@@ -2886,18 +3827,32 @@ function refreshActiveBtns() {
 
 /** Updates the "active symbol" indicator in the sidebar header. */
 function updateSelIndicator() {
-  const charEl = document.getElementById('sel-char');
-  const nameEl = document.getElementById('sel-name');
-  if (!charEl) return;
-  charEl.textContent = currentChar === ' ' ? '·' : currentChar;
-  charEl.style.color = currentColor || 'var(--accent)';
-  charEl.style.borderColor = currentColor || 'var(--accent)';
-  let symName = '';
-  for (const cat of categories) {
-    const s = cat.symbols.find(s => s.char === currentChar);
-    if (s) { symName = s.name; break; }
+  const indicators = [
+    {
+      charEl: document.getElementById('sel-char'),
+      nameEl: document.getElementById('sel-name'),
+    },
+    {
+      charEl: document.getElementById('symbol-panel-sel-char'),
+      nameEl: document.getElementById('symbol-panel-sel-name'),
+    },
+  ].filter(entry => entry.charEl);
+  if (!indicators.length) return;
+  if (brushMixEnabled) {
+    indicators.forEach(({ charEl, nameEl }) => {
+      charEl.textContent = brushMix.length || '0';
+      charEl.style.color = 'var(--accent)';
+      charEl.style.borderColor = 'var(--accent)';
+      if (nameEl) nameEl.textContent = `Mix ${brushMix.length}`;
+    });
+    return;
   }
-  nameEl.textContent = symName;
+  indicators.forEach(({ charEl, nameEl }) => {
+    charEl.textContent = currentChar === ' ' ? '·' : currentChar;
+    charEl.style.color = currentColor || 'var(--accent)';
+    charEl.style.borderColor = currentColor || 'var(--accent)';
+    if (nameEl) nameEl.textContent = selectedSymbolName();
+  });
 }
 
 /* ════════════════════════════════════════════
@@ -2907,6 +3862,11 @@ function updateSelIndicator() {
 ════════════════════════════════════════════ */
 function onCellDown(e) {
   e.preventDefault();
+  if (e.shiftKey && e.button === 0) {
+    e.stopPropagation();
+    beginMousePan(e);
+    return;
+  }
   const mi = parseInt(e.target.dataset.mi);
   const r  = parseInt(e.target.dataset.r);
   const c  = parseInt(e.target.dataset.c);
@@ -2989,14 +3949,12 @@ function applyToCell(cell) {
   const c  = parseInt(cell.dataset.c);
 
   if (mode === 'fill') {
-    floodFill(mi, r, c, maps[mi][r][c], currentChar);
+    floodFill(mi, r, c, maps[mi][r][c]);
     refreshMap(mi);
     scheduleAutosave();
     return;
   }
 
-  const ch  = mode === 'erase' ? ' ' : currentChar;
-  const col = mode === 'erase' ? '' : currentColor;
   const rad = brushRadii[brushSize] || 0;
 
   // Paint all cells within the brush radius (square brush)
@@ -3004,6 +3962,9 @@ function applyToCell(cell) {
     for (let dc = -rad; dc <= rad; dc++) {
       const nr = r + dr, nc = c + dc;
       if (nr < 0 || nr >= TILE_H || nc < 0 || nc >= TILE_W) continue;
+      const picked = mode === 'erase' ? { char: ' ', color: '' } : pickBrushSymbol();
+      const ch = picked.char;
+      const col = picked.color || '';
       maps[mi][nr][nc] = ch;
       const key = `${mi},${nr},${nc}`;
       if (col) cellColors[key] = col; else delete cellColors[key];
@@ -3019,10 +3980,10 @@ function applyToCell(cell) {
  * Flood fill within a single tile.
  * Supports both 4-connected (cardinal) and 8-connected (diagonal) modes,
  * controlled by the global `fillConn` variable.
- * Replaces all contiguous cells matching `target` with `rep`.
+ * Replaces all contiguous cells matching `target` with the active brush symbol or mix.
  */
-function floodFill(mi, r, c, target, rep) {
-  if (target === rep) return;
+function floodFill(mi, r, c, target) {
+  if (target === currentChar && (!brushMixEnabled || brushMix.length === 0)) return;
   const stack = [[r, c]], vis = new Set();
   // 4-connected neighbours (cardinal directions)
   const dirs4 = [[-1,0],[1,0],[0,-1],[0,1]];
@@ -3037,9 +3998,10 @@ function floodFill(mi, r, c, target, rep) {
     if (cr < 0 || cr >= TILE_H || cc < 0 || cc >= TILE_W) continue;
     if (maps[mi][cr][cc] !== target) continue;
     vis.add(k);
-    maps[mi][cr][cc] = rep;
+    const picked = pickBrushSymbol();
+    maps[mi][cr][cc] = picked.char;
     const ck = `${mi},${cr},${cc}`;
-    if (currentColor) cellColors[ck] = currentColor; else delete cellColors[ck];
+    if (picked.color) cellColors[ck] = picked.color; else delete cellColors[ck];
     for (const [dr, dc] of dirs) stack.push([cr+dr, cc+dc]);
   }
 }
@@ -3135,7 +4097,7 @@ function buildPalettePayload() {
       id: layer?.id || 'terrain',
       name: layer?.name || 'Layer',
     },
-    categories: deepClone(layer?.categories || []),
+    categories: categoriesForJsonExport(layer?.categories || []),
   };
 }
 
@@ -3172,6 +4134,8 @@ function applyImportedPalette(categoriesIn) {
   const layer = activeLayer();
   if (!layer) return false;
   layer.categories = cleaned;
+  brushMixEnabled = false;
+  brushMix = [];
   syncLayerRefs();
   buildPalette();
   buildLayerPanel();
@@ -3188,6 +4152,8 @@ function resetActivePaletteToDefault() {
   if (!layer) return;
 
   layer.categories = defaultPaletteForLayerId(layer.id);
+  brushMixEnabled = false;
+  brushMix = [];
   syncLayerRefs();
 
   const firstCat = layer.categories.find(c => c.symbols.length > 0);
@@ -3799,7 +4765,7 @@ function buildSelectedMapJSON() {
   project.activeLayerIdx = 0;
 
   layer.maps = [deepClone(layer.maps[mi])];
-  layer.categories = categoriesUsedByTile(layer.categories, layer.maps[0]);
+  layer.categories = categoriesForJsonExport(categoriesUsedByTile(layer.categories, layer.maps[0]));
   const selectedColors = {};
   const prefix = `${mi},`;
   if (layer.cellColors) {
@@ -4473,9 +5439,52 @@ function applyZoom(scale) {
   wrap.scrollLeft = cx * scale - wrap.clientWidth  / 2;
   wrap.scrollTop  = cy * scale - wrap.clientHeight / 2;
 
-  // Update zoom indicator if present
-  const lbl = document.getElementById('zoom-label');
-  if (lbl) lbl.textContent = Math.round(scale * 100) + '%';
+  updateZoomUI();
+}
+
+function zoomBy(multiplier) {
+  applyZoom(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, _zoomScale * multiplier)));
+}
+
+function resetZoom() {
+  applyZoom(1);
+}
+
+function updateZoomUI() {
+  const text = Math.round(_zoomScale * 100) + '%';
+  const lbl = document.getElementById('zoom-tool-label');
+  if (lbl) lbl.textContent = text;
+}
+
+function beginMousePan(e) {
+  const wrap = document.getElementById('canvas-wrap');
+  if (!wrap) return;
+  e.preventDefault();
+  isPainting = false;
+  isSelecting = false;
+  _strokeUndoPushed = false;
+  _mousePanActive = true;
+  _mousePanStartX = e.clientX;
+  _mousePanStartY = e.clientY;
+  _mousePanOriginX = wrap.scrollLeft;
+  _mousePanOriginY = wrap.scrollTop;
+  wrap.style.cursor = 'grabbing';
+}
+
+function onDocMouseMove(e) {
+  if (!_mousePanActive) return;
+  const wrap = document.getElementById('canvas-wrap');
+  if (!wrap) return;
+  e.preventDefault();
+  wrap.scrollLeft = _mousePanOriginX - (e.clientX - _mousePanStartX);
+  wrap.scrollTop  = _mousePanOriginY - (e.clientY - _mousePanStartY);
+}
+
+function endMousePan() {
+  if (!_mousePanActive) return;
+  _mousePanActive = false;
+  const wrap = document.getElementById('canvas-wrap');
+  if (wrap) wrap.style.cursor = '';
 }
 
 /* ════════════════════════════════════════════
@@ -4674,7 +5683,8 @@ function buildPaletteSheet() {
     grid.className = 'sheet-sym-grid';
     cat.symbols.forEach(sym => {
       const btn = document.createElement('button');
-      btn.className = 'sheet-sym-btn' + (sym.char === currentChar ? ' active' : '');
+      btn.className = 'sheet-sym-btn';
+      btn.dataset.char = sym.char;
       btn.style.color = sym.color || cat.color || 'var(--text)';
       const charSpan = document.createElement('span');
       charSpan.textContent = sym.char === ' ' ? '·' : sym.char;
@@ -4683,6 +5693,10 @@ function buildPaletteSheet() {
       nameSpan.textContent = sym.name;
       btn.append(charSpan, nameSpan);
       btn.onclick = () => {
+        if (brushMixEnabled) {
+          toggleBrushMixSymbol(sym, cat);
+          return;
+        }
         currentChar  = sym.char;
         currentColor = sym.color || cat.color || '';
         refreshActiveBtns();   // updates sidebar + toolbar indicator
@@ -4694,11 +5708,28 @@ function buildPaletteSheet() {
     block.append(hdr, grid);
     body.appendChild(block);
   }
+  refreshActiveBtns();
 }
 
 /** Updates the toolbar symbol button and sheet indicator to match currentChar. */
 function updateToolbarSymbol() {
   const btn = document.getElementById('tb-sym-btn');
+  if (brushMixEnabled) {
+    if (btn) {
+      btn.textContent = brushMix.length || '0';
+      btn.style.color = 'var(--accent)';
+      btn.style.borderColor = 'var(--accent)';
+    }
+    const sheetChar = document.getElementById('sheet-sel-char');
+    const sheetName = document.getElementById('sheet-sel-name');
+    if (sheetChar) {
+      sheetChar.textContent = brushMix.length || '0';
+      sheetChar.style.color = 'var(--accent)';
+      sheetChar.style.borderColor = 'var(--accent)';
+    }
+    if (sheetName) sheetName.textContent = `Mix ${brushMix.length}`;
+    return;
+  }
   if (btn) {
     btn.textContent = currentChar === ' ' ? '·' : currentChar;
     btn.style.color = currentColor || 'var(--accent)';
@@ -4712,12 +5743,7 @@ function updateToolbarSymbol() {
     sheetChar.style.borderColor = currentColor || 'var(--accent)';
   }
   if (sheetName) {
-    let name = '';
-    for (const cat of categories) {
-      const s = cat.symbols.find(s => s.char === currentChar);
-      if (s) { name = s.name; break; }
-    }
-    sheetName.textContent = name;
+    sheetName.textContent = selectedSymbolName();
   }
 }
 
@@ -4883,12 +5909,10 @@ function applyUIMode(mode) {
       setMode('paint');
     }
 
-    const paletteArea = document.getElementById('palette-area');
-    if (paletteArea) {
-      // Rebuild only if it's currently empty (cheap guard)
-      if (paletteArea.children.length === 0) {
-        buildPalette();
-      }
+    const needsPalette = Array.from(document.querySelectorAll('[data-palette-host]'))
+      .some(area => area.children.length === 0);
+    if (needsPalette) {
+      buildPalette();
     }
   }
 }
@@ -4941,8 +5965,14 @@ function initUIMode() {
   createUIModeSwitch();
 }
 
-// Release paint/select drag state when mouse is released anywhere in the document
-document.addEventListener('mouseup', () => { isPainting = false; isSelecting = false; _strokeUndoPushed = false; });
+// Release paint/select/pan drag state when mouse is released anywhere in the document
+document.addEventListener('mousemove', onDocMouseMove);
+document.addEventListener('mouseup', () => {
+  isPainting = false;
+  isSelecting = false;
+  _strokeUndoPushed = false;
+  endMousePan();
+});
 document.addEventListener('touchstart', onDocTouchStart, { passive: false });
 document.addEventListener('touchmove',  onDocTouchMove,  { passive: false });
 document.addEventListener('touchend',   onDocTouchEnd);
@@ -5030,6 +6060,7 @@ function refreshRiverHighlights() {
 function addRiverPair(type) {
   riverPairs.push({ src: null, dst: null, type: type || 'river' });
   buildRiverPairList();
+  scheduleAutosave();
 }
 
 function toggleAddDropdown(btn) {
@@ -5091,7 +6122,13 @@ function buildRiverPairList() {
     del.className = 'sbtn red';
     del.textContent = '✕';
     del.style.padding = '3px 6px';
-    del.onclick = () => { riverPairs.splice(i, 1); riverPickPending = null; buildRiverPairList(); refreshRiverHighlights(); };
+    del.onclick = () => {
+      riverPairs.splice(i, 1);
+      riverPickPending = null;
+      buildRiverPairList();
+      refreshRiverHighlights();
+      scheduleAutosave();
+    };
 
     row.append(badge, srcBtn, arrow, dstBtn, spacer, del);
     el.appendChild(row);
@@ -5135,6 +6172,7 @@ function finishPick(wx, wy) {
   document.getElementById('modal-gen').classList.add('open');
   buildRiverPairList();
   refreshRiverHighlights();
+  scheduleAutosave();
   return true;
 }
 
@@ -5188,16 +6226,19 @@ function capturePreset(name) {
     water: {
       meander:    parseInt(document.getElementById('wtr-meander')?.value)    || 4,
       seed:       parseInt(document.getElementById('wtr-seed')?.value)       || 7,
-      symRiverH:  document.getElementById('wtr-sym-river-h')?.value         || '═',
-      symRiverV:  document.getElementById('wtr-sym-river-v')?.value         || '║',
-      symStreamA: document.getElementById('wtr-sym-stream-a')?.value        || '\\',
-      symEstuary: document.getElementById('wtr-sym-estuary')?.value         || '≈',
+      routeStyles: captureRouteStyles(['river', 'stream']),
       lakes:      parseInt(document.getElementById('wtr-lakes')?.value)     || 0,
       radMin:     parseInt(document.getElementById('wtr-rad-min')?.value)   || 3,
       radMax:     parseInt(document.getElementById('wtr-rad-max')?.value)   || 8,
       lakeSeed:   parseInt(document.getElementById('wtr-lake-seed')?.value) || 13,
       rings:      deepClone(waterRings),
       riverPairs: deepClone(riverPairs),
+    },
+    roads: {
+      meander: parseInt(document.getElementById('roads-meander')?.value) || 2,
+      seed:    parseInt(document.getElementById('roads-seed')?.value)    || 99,
+      routeStyles: captureRouteStyles(['road', 'path']),
+      roadPairs: deepClone(roadPairs),
     },
   };
 }
@@ -5251,12 +6292,29 @@ function applyPreset(preset) {
     if (Array.isArray(w.riverPairs)) riverPairs = deepClone(w.riverPairs);
     buildWaterRingList();
     buildWaterSymSelects();
-    // Set symbol selects after buildWaterSymSelects populates them
-    if (w.symRiverH)  { const el = document.getElementById('wtr-sym-river-h');  if (el) el.value = w.symRiverH;  }
-    if (w.symRiverV)  { const el = document.getElementById('wtr-sym-river-v');  if (el) el.value = w.symRiverV;  }
-    if (w.symStreamA) { const el = document.getElementById('wtr-sym-stream-a'); if (el) el.value = w.symStreamA; }
-    if (w.symEstuary) { const el = document.getElementById('wtr-sym-estuary');  if (el) el.value = w.symEstuary; }
+    applyRouteStyleSnapshot(w.routeStyles);
+    if (w.symRiverH) { const el = document.getElementById('route-river-h'); if (el) el.value = w.symRiverH; }
+    if (w.symRiverV) { const el = document.getElementById('route-river-v'); if (el) el.value = w.symRiverV; }
+    if (w.symStreamA) {
+      const up = document.getElementById('route-stream-diagUp');
+      const dn = document.getElementById('route-stream-diagDown');
+      if (up) up.value = w.symStreamA;
+      if (dn) dn.value = w.symStreamA;
+    }
     buildRiverPairList();
+  }
+
+  if (preset.roads) {
+    const r = preset.roads;
+    const setV = (id, val) => { const el = document.getElementById(id); if (el && val != null) el.value = val; };
+    setV('roads-meander', r.meander);
+    setV('roads-seed', r.seed);
+    const lbl = document.getElementById('roads-meander-v');
+    if (lbl && r.meander != null) lbl.textContent = r.meander;
+    buildRouteStyleControls('road-route-style-list', ['road', 'path']);
+    applyRouteStyleSnapshot(r.routeStyles);
+    if (Array.isArray(r.roadPairs)) roadPairs = deepClone(r.roadPairs);
+    buildRoadPairList();
   }
 
   // Refresh all gen UI from restored state
@@ -5408,13 +6466,39 @@ function exportPresetsTxt() {
         lines.push(`      Depth rings: ${w.rings.map((r, ri) => `${ri === 0 ? 'center' : ri === w.rings.length - 1 ? 'shore' : `ring${ri + 1}`}="${r.sym}" w=${r.width}`).join('  ')}`);
       }
       lines.push(`      Rivers: meander=${w.meander ?? 4}  seed=${w.seed ?? 7}`);
-      lines.push(`      Symbols: river-H="${w.symRiverH ?? '═'}"  river-V="${w.symRiverV ?? '║'}"  stream="${w.symStreamA ?? '\\'}"` );
+      if (w.routeStyles) {
+        Object.values(w.routeStyles).forEach(style => {
+          lines.push(`      ${style.name}: color=${style.color} H="${style.symbols?.h}" V="${style.symbols?.v}" corners="${style.symbols?.ne}${style.symbols?.nw}${style.symbols?.se}${style.symbols?.sw}" J="${style.symbols?.junction}"`);
+        });
+      } else {
+        lines.push(`      Symbols: river-H="${w.symRiverH ?? '═'}"  river-V="${w.symRiverV ?? '║'}"  stream="${w.symStreamA ?? '\\'}"` );
+      }
       if (Array.isArray(w.riverPairs) && w.riverPairs.length > 0) {
         lines.push(`      Paths (${w.riverPairs.length}):`);
         w.riverPairs.forEach((pair, pi) => {
           const src = pair.src ? `(${pair.src.wx},${pair.src.wy})` : 'unset';
           const dst = pair.dst ? `(${pair.dst.wx},${pair.dst.wy})` : 'unset';
           lines.push(`        ${pi + 1}. ${pair.type ?? 'river'}  ${src} → ${dst}`);
+        });
+      }
+    }
+
+    if (p.roads) {
+      const r = p.roads;
+      lines.push('');
+      lines.push('    Roads & Paths:');
+      lines.push(`      Meander: ${r.meander ?? 2}  Seed: ${r.seed ?? 99}`);
+      if (r.routeStyles) {
+        Object.values(r.routeStyles).forEach(style => {
+          lines.push(`      ${style.name}: color=${style.color} H="${style.symbols?.h}" V="${style.symbols?.v}" corners="${style.symbols?.ne}${style.symbols?.nw}${style.symbols?.se}${style.symbols?.sw}" J="${style.symbols?.junction}"`);
+        });
+      }
+      if (Array.isArray(r.roadPairs) && r.roadPairs.length > 0) {
+        lines.push(`      Routes (${r.roadPairs.length}):`);
+        r.roadPairs.forEach((pair, pi) => {
+          const src = pair.src ? `(${pair.src.wx},${pair.src.wy})` : 'unset';
+          const dst = pair.dst ? `(${pair.dst.wx},${pair.dst.wy})` : 'unset';
+          lines.push(`        ${pi + 1}. ${pair.type ?? 'road'}  ${src} → ${dst}`);
         });
       }
     }
@@ -5889,6 +6973,192 @@ function isLakePlaced(wx, wy) {
   return _lakePlaced.has(`${wx},${wy}`);
 }
 
+const ROUTE_STYLE_DEFAULTS = {
+  river: {
+    name: 'River',
+    color: '#4a90c4',
+    symbols: { h: '═', v: '║', ne: '╚', nw: '╝', se: '╔', sw: '╗', junction: '╬', diagUp: '/', diagDown: '\\' },
+  },
+  stream: {
+    name: 'Stream',
+    color: '#7ab8e0',
+    symbols: { h: '~', v: '∿', ne: '/', nw: '\\', se: '\\', sw: '/', junction: '+', diagUp: '/', diagDown: '\\' },
+  },
+  road: {
+    name: 'Road',
+    color: '#c8b060',
+    symbols: { h: '═', v: '║', ne: '╚', nw: '╝', se: '╔', sw: '╗', junction: '╬', diagUp: '/', diagDown: '\\' },
+  },
+  path: {
+    name: 'Path',
+    color: '#b0a070',
+    symbols: { h: '-', v: '|', ne: '/', nw: '\\', se: '\\', sw: '/', junction: '+', diagUp: '/', diagDown: '\\' },
+  },
+};
+
+const ROUTE_SYMBOL_FIELDS = [
+  ['h', 'H'], ['v', 'V'], ['ne', 'NE'], ['nw', 'NW'], ['se', 'SE'],
+  ['sw', 'SW'], ['junction', 'J'], ['diagUp', '/'], ['diagDown', '\\'],
+];
+
+function buildRouteStyleControls(containerId, styleIds) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.innerHTML = '';
+  styleIds.forEach(styleId => {
+    const style = ROUTE_STYLE_DEFAULTS[styleId];
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'border:1px solid var(--border);background:var(--surface);border-radius:3px;padding:7px;display:flex;flex-direction:column;gap:6px';
+    const head = document.createElement('div');
+    head.style.cssText = 'display:flex;align-items:center;gap:8px';
+    const title = document.createElement('span');
+    title.textContent = style.name;
+    title.style.cssText = 'font-size:11px;font-weight:700;color:var(--text);letter-spacing:.8px;text-transform:uppercase;min-width:70px';
+    const color = document.createElement('input');
+    color.type = 'color';
+    color.id = `route-${styleId}-color`;
+    color.value = style.color;
+    color.title = `${style.name} color`;
+    color.style.cssText = 'width:34px;height:24px;flex-shrink:0';
+    const reset = document.createElement('button');
+    reset.className = 'sbtn';
+    reset.textContent = 'Reset';
+    reset.style.cssText = 'padding:2px 7px;font-size:10px;min-height:auto;margin-left:auto';
+    reset.onclick = () => resetRouteStyleControls(styleId);
+    head.append(title, color, reset);
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(48px,1fr));gap:5px';
+    ROUTE_SYMBOL_FIELDS.forEach(([key, label]) => {
+      const field = document.createElement('label');
+      field.style.cssText = 'display:flex;align-items:center;gap:3px;font-size:10px;color:var(--text2)';
+      const span = document.createElement('span');
+      span.textContent = label;
+      span.style.cssText = 'width:20px;text-align:right';
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.maxLength = 1;
+      input.id = `route-${styleId}-${key}`;
+      input.value = style.symbols[key];
+      input.style.cssText = 'width:26px;text-align:center;font-family:var(--mono);padding:2px 4px';
+      field.append(span, input);
+      grid.appendChild(field);
+    });
+    wrap.append(head, grid);
+    container.appendChild(wrap);
+  });
+}
+
+function resetRouteStyleControls(styleId) {
+  const style = ROUTE_STYLE_DEFAULTS[styleId];
+  if (!style) return;
+  const color = document.getElementById(`route-${styleId}-color`);
+  if (color) color.value = style.color;
+  ROUTE_SYMBOL_FIELDS.forEach(([key]) => {
+    const input = document.getElementById(`route-${styleId}-${key}`);
+    if (input) input.value = style.symbols[key];
+  });
+}
+
+function readRouteStyle(styleId) {
+  const defaults = ROUTE_STYLE_DEFAULTS[styleId];
+  const symbols = {};
+  ROUTE_SYMBOL_FIELDS.forEach(([key]) => {
+    const value = document.getElementById(`route-${styleId}-${key}`)?.value;
+    symbols[key] = value ? Array.from(value)[0] : defaults.symbols[key];
+  });
+  return {
+    id: styleId,
+    name: defaults.name,
+    color: document.getElementById(`route-${styleId}-color`)?.value || defaults.color,
+    symbols,
+  };
+}
+
+function captureRouteStyles(styleIds) {
+  const out = {};
+  styleIds.forEach(id => out[id] = readRouteStyle(id));
+  return out;
+}
+
+function applyRouteStyleSnapshot(snapshot) {
+  if (!snapshot) return;
+  Object.entries(snapshot).forEach(([styleId, style]) => {
+    if (!ROUTE_STYLE_DEFAULTS[styleId]) return;
+    const color = document.getElementById(`route-${styleId}-color`);
+    if (color && style.color) color.value = style.color;
+    Object.entries(style.symbols || {}).forEach(([key, value]) => {
+      const input = document.getElementById(`route-${styleId}-${key}`);
+      if (input && value) input.value = value;
+    });
+  });
+}
+
+function routeDirKey(dx, dy) {
+  return `${Math.sign(dx)},${Math.sign(dy)}`;
+}
+
+function oppositeRouteDir(key) {
+  const [dx, dy] = key.split(',').map(Number);
+  return `${-dx},${-dy}`;
+}
+
+function buildRouteTopology(path) {
+  const points = new Map();
+  const ordered = [];
+  const ensure = (point) => {
+    const key = `${point.wx},${point.wy}`;
+    let node = points.get(key);
+    if (!node) {
+      node = { wx: point.wx, wy: point.wy, dirs: new Set() };
+      points.set(key, node);
+      ordered.push(node);
+    }
+    return node;
+  };
+
+  path.forEach(ensure);
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1];
+    const b = path[i];
+    const dx = Math.sign(b.wx - a.wx);
+    const dy = Math.sign(b.wy - a.wy);
+    if (!dx && !dy) continue;
+    const from = ensure(a);
+    const to = ensure(b);
+    const dir = routeDirKey(dx, dy);
+    from.dirs.add(dir);
+    to.dirs.add(oppositeRouteDir(dir));
+  }
+  return ordered;
+}
+
+function routeSymbolFromDirs(style, dirs) {
+  const steps = [...dirs].map(key => {
+    const [dx, dy] = key.split(',').map(Number);
+    return { dx, dy };
+  });
+  if (!steps.length) return style.symbols.h;
+  if (steps.length >= 3) return style.symbols.junction;
+  const diagonal = steps.find(s => s.dx !== 0 && s.dy !== 0);
+  if (diagonal) return diagonal.dx === diagonal.dy ? style.symbols.diagDown : style.symbols.diagUp;
+  const hasE = steps.some(s => s.dx > 0), hasW = steps.some(s => s.dx < 0);
+  const hasS = steps.some(s => s.dy > 0), hasN = steps.some(s => s.dy < 0);
+  if ((hasE && hasW) || (steps.length === 1 && steps[0].dx !== 0)) return style.symbols.h;
+  if ((hasN && hasS) || (steps.length === 1 && steps[0].dy !== 0)) return style.symbols.v;
+  if (hasN && hasE) return style.symbols.ne;
+  if (hasN && hasW) return style.symbols.nw;
+  if (hasS && hasE) return style.symbols.se;
+  if (hasS && hasW) return style.symbols.sw;
+  return style.symbols.junction;
+}
+
+function drawRoutePath(path, style, setter) {
+  buildRouteTopology(path).forEach(point => {
+    const ch = routeSymbolFromDirs(style, point.dirs);
+    setter(point.wx, point.wy, ch, style.color);
+  });
+}
+
 /** Marks a world cell as having been placed by the lake generator this run. */
 function markLakePlaced(wx, wy) {
   _lakePlaced.add(`${wx},${wy}`);
@@ -5943,24 +7213,7 @@ function addWaterRing() {
 
 // ── Populate palette-driven selects ──
 function buildWaterSymSelects() {
-  const allSyms = categories.flatMap(cat => cat.symbols.filter(s => s.char !== ' '));
-  const selIds  = ['wtr-sym-stream-a','wtr-sym-river-h','wtr-sym-river-v','wtr-sym-estuary'];
-  const defaults = ['\\', '═', '║', '≈'];
-  selIds.forEach((id, i) => {
-    const sel = document.getElementById(id);
-    if (!sel) return;
-    const prev = sel.value;
-    sel.innerHTML = '';
-    allSyms.forEach(sym => {
-      const opt = document.createElement('option');
-      opt.value = sym.char;
-      opt.textContent = `${sym.char === ' ' ? '·' : sym.char}  ${sym.name}`;
-      sel.appendChild(opt);
-    });
-    // Restore previous or default
-    sel.value = prev || defaults[i];
-    if (!sel.value && sel.options.length) sel.selectedIndex = 0;
-  });
+  buildRouteStyleControls('water-route-style-list', ['river', 'stream']);
 }
 
 /* ════════════════════════════════════════════
@@ -5980,9 +7233,10 @@ function runWaterGen() {
   const radMax     = parseInt(document.getElementById('wtr-rad-max').value)      || 8;
   const lakeSeed   = parseInt(document.getElementById('wtr-lake-seed').value)    || 13;
 
-  // Channel symbols — sourced from the palette via the Water tab selects
-  const symRiverH  = document.getElementById('wtr-sym-river-h')?.value  || '═';
-  const symRiverV  = document.getElementById('wtr-sym-river-v')?.value  || '║';
+  const routeStyles = {
+    river: readRouteStyle('river'),
+    stream: readRouteStyle('stream'),
+  };
 
   // Clear the per-run lake tracker
   _lakePlaced.clear();
@@ -6014,22 +7268,14 @@ function runWaterGen() {
     // the wanderer from immediately doubling back into its own trail.
     const recentSteps = [];
     const MEMORY = 4;
+    const path = [];
 
     for (let step = 0; step < maxLen; step++) {
       if (wx < 0 || wx >= worldW || wy < 0 || wy >= worldH) break;
       const info = worldGet(wx, wy);
       if (!info) break;
       if (isLakePlaced(wx, wy)) break;
-
-      // Symbol: streams use diagonal \ /, rivers use ═ ║
-      let sym;
-      if (isStream) {
-        sym = sDx >= 0 ? '\\' : '/';
-      } else {
-        const isH = Math.abs(sDx) > Math.abs(sDy) * 0.6;
-        sym = isH ? symRiverH : symRiverV;
-      }
-      worldSetForce(wx, wy, sym);
+      path.push({ wx, wy });
 
       // Record this position in the short-term memory
       recentSteps.push(`${wx},${wy}`);
@@ -6062,7 +7308,7 @@ function runWaterGen() {
         ddx = blendedDx > 0 ? 1 : -1; ddy = 0; horizRun++;
       } else {
         ddy = blendedDy >= 0 ? 1 : -1;
-        if (Math.abs(blendedDx) > 0.25) ddx = blendedDx > 0 ? 1 : -1;
+        ddx = 0;
         horizRun = 0;
       }
 
@@ -6087,6 +7333,7 @@ function runWaterGen() {
       wx = clamp(wx + ddx, 0, worldW - 1);
       wy = clamp(wy + ddy, 0, worldH - 1);
     }
+    drawRoutePath(path, routeStyles[pair.type] || routeStyles.river, worldSetForce);
   });
 
   // ── Draw lakes (Poisson disk sampling for even distribution) ──
@@ -6150,7 +7397,7 @@ function runWaterGen() {
   // Clear source/destination highlights — generation is complete
   document.querySelectorAll('.cell.river-src, .cell.river-dst')
     .forEach(c => c.classList.remove('river-src', 'river-dst'));
-  scheduleAutosave();
+  persistAutosave(true);
   toast(`Water generated on ${genTiles.size} tile${genTiles.size > 1 ? 's' : ''}`);
 }
 
@@ -6191,11 +7438,12 @@ function worldSet(wx, wy, ch) {
  * Writes a character to a world coordinate unconditionally (ignores genTiles).
  * Used for rivers and streams which must cross tile boundaries freely.
  */
-function worldSetForce(wx, wy, ch) {
+function worldSetForce(wx, wy, ch, color = '') {
   const info = worldGet(wx, wy);
   if (!info) return;
   maps[info.mi][info.r][info.c] = ch;
-  delete cellColors[`${info.mi},${info.r},${info.c}`];
+  const key = `${info.mi},${info.r},${info.c}`;
+  if (color) cellColors[key] = color; else delete cellColors[key];
 }
 
 /* ════════════════════════════════════════════
@@ -6370,9 +7618,8 @@ function runGeneration() {
 
 /* ════════════════════════════════════════════
    ROADS & PATHS GENERATION
-   Generates roads and paths on the active structure layer (Underground or Structures).
-   Reuses the river pathfinding algorithm with user-chosen symbols.
-   The Terrain layer is never modified by this generator.
+   Generates roads and paths on the active layer.
+   Reuses the river pathfinding algorithm with user-chosen route styles.
 ════════════════════════════════════════════ */
 
 // Road/path pairs — same structure as riverPairs but stored separately
@@ -6398,26 +7645,7 @@ function buildRoadsTab() {
     badge.style.color = colors[layer?.id] || 'var(--text2)';
   }
 
-  // Populate symbol selects from the active layer's palette
-  const allSyms = (activeLayer()?.categories ?? [])
-    .flatMap(cat => cat.symbols.filter(s => s.char !== ' '));
-
-  ['roads-sym-h', 'roads-sym-v', 'roads-sym-path'].forEach((id, i) => {
-    const sel = document.getElementById(id);
-    if (!sel) return;
-    const prev = sel.value;
-    sel.innerHTML = '';
-    allSyms.forEach(sym => {
-      const opt = document.createElement('option');
-      opt.value = sym.char;
-      opt.textContent = `${sym.char}  ${sym.name}`;
-      sel.appendChild(opt);
-    });
-    // Sensible defaults: horiz road, vert road, path
-    const defaults = ['═', '║', '·'];
-    sel.value = prev || defaults[i];
-    if (!sel.value && sel.options.length) sel.selectedIndex = 0;
-  });
+  buildRouteStyleControls('road-route-style-list', ['road', 'path']);
 
   buildRoadPairList();
   refreshRoadHighlights();
@@ -6427,6 +7655,7 @@ function buildRoadsTab() {
 function addRoadPair(type) {
   roadPairs.push({ src: null, dst: null, type: type || 'road' });
   buildRoadPairList();
+  scheduleAutosave();
 }
 
 /** Rebuilds the road pair list UI in the Roads panel. */
@@ -6479,6 +7708,7 @@ function buildRoadPairList() {
       roadPickPending = null;
       buildRoadPairList();
       refreshRoadHighlights();
+      scheduleAutosave();
     };
 
     row.append(badge, srcBtn, arrow, dstBtn, spacer, del);
@@ -6535,30 +7765,25 @@ function finishRoadPick(wx, wy) {
   document.getElementById('modal-gen').classList.add('open');
   buildRoadPairList();
   refreshRoadHighlights();
+  scheduleAutosave();
   return true;
 }
 
 /**
- * Generates roads and paths on the active structure layer.
+ * Generates roads and paths on the active layer.
  * Uses the same noise-guided pathfinding as rivers but writes to the
- * active layer's maps[] instead of the terrain layer.
- * The Terrain layer is never touched.
+ * active layer's maps[].
  */
 function runRoadsGen() {
-  // Guard: refuse to run on the terrain layer
-  if (activeLayerIdx === 0) {
-    toast('Switch to Underground or Structures layer first');
-    return;
-  }
-
   const validPairs = roadPairs.filter(p => p.src && p.dst);
   if (validPairs.length === 0) { toast('No road routes defined'); return; }
 
   pushUndo();
 
-  const symH    = document.getElementById('roads-sym-h')?.value    || '═';
-  const symV    = document.getElementById('roads-sym-v')?.value    || '║';
-  const symPath = document.getElementById('roads-sym-path')?.value || '·';
+  const routeStyles = {
+    road: readRouteStyle('road'),
+    path: readRouteStyle('path'),
+  };
   const meander = parseInt(document.getElementById('roads-meander')?.value) || 2;
   const seed    = parseInt(document.getElementById('roads-seed')?.value)    || 99;
 
@@ -6569,8 +7794,8 @@ function runRoadsGen() {
   const mNoise2 = makePerlin(seed + 7);
   const NS = 0.12;
 
-  // Helper: write to the active layer's maps (not the terrain layer)
-  function roadSet(wx, wy, ch) {
+  // Helper: write to the active layer's maps directly.
+  function roadSet(wx, wy, ch, color = '') {
     const tileC = Math.floor(wx / TILE_W);
     const tileR = Math.floor(wy / TILE_H);
     if (tileC < 0 || tileC >= GRID_COLS || tileR < 0 || tileR >= GRID_ROWS) return;
@@ -6579,7 +7804,9 @@ function runRoadsGen() {
     const c  = wx - tileC * TILE_W;
     // Write to the active layer directly (bypasses the backward-compat proxy)
     layers[activeLayerIdx].maps[mi][r][c] = ch;
-    delete layers[activeLayerIdx].cellColors[`${mi},${r},${c}`];
+    const key = `${mi},${r},${c}`;
+    if (color) layers[activeLayerIdx].cellColors[key] = color;
+    else delete layers[activeLayerIdx].cellColors[key];
   }
 
   validPairs.forEach(pair => {
@@ -6593,19 +7820,11 @@ function runRoadsGen() {
     const destPull = 0.35;
     const recentSteps = [];
     const MEMORY = 4;
+    const path = [];
 
     for (let step = 0; step < maxLen; step++) {
       if (wx < 0 || wx >= worldW || wy < 0 || wy >= worldH) break;
-
-      // Symbol: paths use the path symbol, roads use horiz/vert
-      let sym;
-      if (isPath) {
-        sym = symPath;
-      } else {
-        const isH = Math.abs(sDx) > Math.abs(sDy) * 0.6;
-        sym = isH ? symH : symV;
-      }
-      roadSet(wx, wy, sym);
+      path.push({ wx, wy });
 
       recentSteps.push(`${wx},${wy}`);
       if (recentSteps.length > MEMORY) recentSteps.shift();
@@ -6634,7 +7853,7 @@ function runRoadsGen() {
         ddx = blendedDx > 0 ? 1 : -1; ddy = 0; horizRun++;
       } else {
         ddy = blendedDy >= 0 ? 1 : -1;
-        if (Math.abs(blendedDx) > 0.25) ddx = blendedDx > 0 ? 1 : -1;
+        ddx = 0;
         horizRun = 0;
       }
 
@@ -6653,6 +7872,7 @@ function runRoadsGen() {
       wx = clamp(wx + ddx, 0, worldW - 1);
       wy = clamp(wy + ddy, 0, worldH - 1);
     }
+    drawRoutePath(path, routeStyles[pair.type] || routeStyles.road, roadSet);
   });
 
   // Refresh all tiles using composite rendering (shows all layers)
@@ -6663,7 +7883,7 @@ function runRoadsGen() {
   document.querySelectorAll('.cell.river-src, .cell.river-dst')
     .forEach(c => c.classList.remove('river-src', 'river-dst'));
 
-  scheduleAutosave();
+  persistAutosave(true);
   closeModal('modal-gen');
   toast(`Roads generated on "${activeLayer().name}" layer`);
 }
@@ -6765,6 +7985,8 @@ function buildLayerPanel() {
 function setActiveLayer(idx) {
   if (idx < 0 || idx >= layers.length) return;
   activeLayerIdx = idx;
+  brushMixEnabled = false;
+  brushMix = [];
 
   // Re-point the backward-compat shim variables to the new active layer
   syncLayerRefs();

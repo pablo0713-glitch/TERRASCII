@@ -1,4 +1,4 @@
-# TERRASCII — Unified Architecture
+# TERRASCII v3.0 — Unified Architecture
 
 > **Canonical file:** `TERRASCII/index.html`
 > This is the single source of truth for all TERRASCII development going forward.
@@ -36,9 +36,11 @@ This is not a constraint born out of limitation, but a core product feature:
 | **Persistence** | The chosen mode is saved to `localStorage` (`terrascii-ui-mode`) and restored on next open |
 
 ### Desktop Mode (`body.ui-desktop`)
-- Classic fixed sidebar (260 px) with **Layers**, **Brush**, and **Symbols** panels
+- Three-column workspace: fixed left tool sidebar (260 px), central canvas, and a dominant right **Symbols** panel
+- Left sidebar contains Layers, Brush, selection, zoom, and utility tools
+- Right Symbols panel contains active symbol status, Brush Mix controls, and the active layer palette
 - Keyboard shortcuts active (Ctrl+Z/Y/C/X/V/S)
-- Mouse wheel + Ctrl for zoom
+- Ctrl/⌘ + mouse wheel for zoom; Shift + left-drag for canvas panning
 - `interactionMode` is forced to `'paint'` on entry so brush tools work immediately
 
 ### Mobile Mode (`body.ui-mobile`)
@@ -52,8 +54,8 @@ This is not a constraint born out of limitation, but a core product feature:
 Mode switching is implemented entirely via two body classes:
 
 ```css
-body.ui-desktop  /* shows sidebar, hides bottom toolbar + mode strip */
-body.ui-mobile   /* hides sidebar, shows bottom toolbar + mode strip */
+body.ui-desktop  /* shows left sidebar + right symbol panel, hides bottom toolbar + mode strip */
+body.ui-mobile   /* hides side panels, shows bottom toolbar + mode strip */
 ```
 
 The `applyUIMode(mode)` function applies the class, syncs the toggle buttons, and — when entering desktop mode — forces `interactionMode = 'paint'` and calls `setMode('paint')` so the sidebar brush buttons are immediately active.
@@ -62,7 +64,7 @@ The `applyUIMode(mode)` function applies the class, syncs the toggle buttons, an
 
 ## Layer System
 
-TERRASCII v2.0 introduces a **three-layer compositing system**. Each layer is an independent editing surface with its own palette, map data, and cell color overrides.
+TERRASCII uses a **three-layer compositing system** introduced in v2.0 and expanded through v3.0. Each layer is an independent editing surface with its own palette, map data, and cell color overrides.
 
 ### Layer Stack (bottom → top)
 
@@ -116,6 +118,17 @@ let cellColors = {};
 
 Clicking a row calls `setActiveLayer(idx)`, which calls `syncLayerRefs()`, resets the current symbol to the first in the new layer's palette, and rebuilds the palette panel.
 
+### Desktop Symbols Panel
+
+Desktop mode uses a dedicated right-side `#symbol-panel` so the symbol palette is a primary surface rather than the last section of the left tool column.
+
+Important DOM anchors:
+- `#symbol-panel-sel-char` / `#symbol-panel-sel-name` mirror the active symbol or Brush Mix count
+- `#symbol-panel-brush-mix-toggle`, `#symbol-panel-brush-mix-count`, and `#symbol-panel-brush-mix-list` mirror Brush Mix controls
+- `#symbol-panel-palette[data-palette-host]` receives the active layer palette grid
+
+The old sidebar symbols section still exists as `.sidebar-symbols` for fallback/mobile-adjacent structure, but `body.ui-desktop #sidebar .sidebar-symbols` is hidden. Palette rendering is host-based: any element marked `data-palette-host` is rebuilt by `buildPalette()` via `renderPaletteInto(area)`.
+
 ### Symbol Palette Builder
 
 The palette modal is the `Symbol Palette Builder`. It edits the palette for the currently active layer only.
@@ -131,6 +144,46 @@ Import/export behavior:
 - `.txt` and `.html` exports embed a machine-readable payload so imports can round-trip cleanly
 - `Reset to default` restores the layer's built-in starter palette: Terrain uses `DEFAULT_CATEGORIES`, Underground uses `UNDERGROUND_STARTER`, and Structures uses `STRUCTURES_STARTER`
 - After import or reset, the palette panel, generator symbol lists, and toolbar symbol are refreshed immediately
+
+### Starter Palette Upgrade
+
+Expanded built-in starter palettes are merged into restored projects with `upgradeStarterPalettes()` during `applyProjectJSON()`. This is intentionally non-destructive:
+- Existing symbols are preserved by character
+- Custom symbols/categories remain intact
+- Missing built-in symbols are appended to the matching starter category by category name
+- New categories are created only when a matching starter category is absent
+
+This lets autosaved or older project files pick up richer defaults after refresh/open without requiring users to reset their palettes.
+
+### Symbol Reference Modal
+
+The `ASCII & Symbol Reference` modal is opened from the top toolbar. It has:
+- `Examples` tab: curated TERRASCII symbol usage examples
+- `Complete List` tab: printable ASCII 32-126 plus any non-ASCII symbols used by the curated examples
+- Per-symbol copy buttons
+- Full-list copy plus `.txt` and `.html` reference exports
+
+The complete list is generated from `PRINTABLE_ASCII_GROUPS` plus `ADDITIONAL_CURATED_SYMBOLS`, derived from `SYMBOL_REFERENCE_GROUPS`, so curated-symbol additions automatically appear in the complete reference.
+
+### Biome Metadata Syntax
+
+Palette symbol names may include optional engine-facing metadata:
+
+```text
+Display Name | species:weight, species2
+```
+
+Implementation helpers:
+- `parseSymbolBiomeName(rawName)` splits display text from metadata and calculates weights
+- `symbolForJsonExport(sym)` returns a cloned symbol with cleaned `name` and optional `biomeData`
+- `categoriesForJsonExport(rawCategories)` applies that transform to a palette
+- `buildProjectExportJSON()` applies the transform to manual full-project JSON downloads
+
+Examples:
+- `Oak-Hickory | oak, hickory` → `biomeData: { oak: 50, hickory: 50 }`
+- `Mixed Pine | pine:70, oak` → `biomeData: { pine: 70, oak: 30 }`
+
+Autosave and editor project state continue to use `buildProjectJSON()` and preserve the original editable names. Manual JSON downloads and selected-map JSON exports are engine-facing and include parsed `biomeData`.
 
 ---
 
@@ -152,12 +205,18 @@ State is managed by module-level JavaScript variables inside the `<script>` tag.
 | `cellColors{}` | `Object` | Shim → `layers[activeLayerIdx].cellColors` |
 | `mode` | `string` | `'paint' \| 'erase' \| 'fill' \| 'select'` |
 | `interactionMode` | `string` | `'pan' \| 'paint'` (touch intent) |
+| `brushMixEnabled` | `boolean` | Whether palette clicks toggle multi-symbol brush membership |
+| `brushMix[]` | `Array` | Weighted brush entries: `{ char, color, name, weight }` |
+| `_zoomScale` | `number` | Current canvas zoom scale |
+| `_mousePanActive` | `boolean` | Desktop Shift-drag pan state |
 | `undoStack` / `redoStack` | `Array` | Capped JSON snapshot arrays (50 max) |
 | `genPresets[]` | `Array` | Saved generation presets (persisted with project) |
 | `riverPairs[]` | `Array` | Water tab source→destination pairs |
 | `roadPairs[]` | `Array` | Roads tab source→destination pairs |
 
-Local persistence is achieved via `localStorage`, serializing the core state on a debounced timer (900 ms after a change).
+Local persistence is achieved via `localStorage`. Ordinary edits serialize on a debounced timer (900 ms after a change), generation writes immediately, and `pagehide` / `beforeunload` flush any pending autosave before refresh/navigation.
+
+Undo/redo snapshots are active-layer snapshots of both `maps` and `cellColors`. `applySnapshot()` must restore the color object back onto `activeLayer().cellColors`, not just the compatibility shim, so generated route glyphs and route color overrides remain paired after undo/autosave/refresh.
 
 ---
 
@@ -173,7 +232,18 @@ We avoid "Virtual DOM" reconciliation. Instead, we use tight, direct DOM manipul
 | Function | When used |
 |---|---|
 | `refreshMap(mi)` | Single-layer fast path — painting, generation on active layer |
-| `refreshMapComposite(mi)` | Multi-layer composite — layer visibility toggle, Roads generation, project load |
+| `refreshMapComposite(mi)` | Multi-layer composite — layer visibility toggle, Roads generation, project load/boot |
+
+### Brush Mix Rendering
+
+Brush Mix lets a user paint/fill with multiple symbols. When enabled:
+- Palette clicks toggle symbols into `brushMix` instead of replacing `currentChar`
+- Each entry has an editable numeric weight
+- `pickBrushSymbol()` samples one symbol per painted cell
+- Paint strokes, larger brush sizes, and flood fill all sample per cell, producing varied patches
+- If all weights are zero, sampling falls back to uniform random choice among mix entries
+
+Brush Mix UI is mirrored across desktop left controls, the right Symbols panel, and the mobile Palette sheet. The mix is cleared/disabled on layer switch, palette import/reset, new project, and project open to prevent stale symbols from crossing layer palettes.
 
 ---
 
@@ -185,6 +255,15 @@ All touch handling is done via three document-level listeners (`touchstart`, `to
 - **Paint stroke** (1 finger, paint mode) — uses `elementFromPoint()` to find the cell under the finger
 
 Mouse events use per-cell `mousedown` / `mouseenter` listeners with a document-level `mouseup` to end strokes.
+
+Desktop mouse panning:
+- Ctrl/⌘ + wheel calls `zoomBy()` / `applyZoom()` for canvas zoom
+- The left Brush section displays `#zoom-tool-label` plus zoom in/out/reset controls
+- Shift + left-drag starts `beginMousePan(e)` even when the drag begins over a cell
+- Document-level `mousemove` calls `onDocMouseMove(e)` while `_mousePanActive`
+- Document-level `mouseup` calls `endMousePan()`
+
+The coordinate status remains in the top toolbar, but the zoom percentage was moved out of the header to prevent toolbar wrapping and layout jitter.
 
 ---
 
@@ -199,8 +278,9 @@ All generation is self-contained in the single file:
 | Iterative flood fill (4- or 8-connected) | Flood Fill brush mode |
 | Poisson-disk sampling | Even lake placement |
 | Noise-guided pathfinding + destination pull | Rivers, streams, roads, paths |
+| Direction-aware route styling | Flowing water, roads, paths |
 | 4-step backtrack memory | Prevents river/road self-crossing |
-| `worldGet()` / `worldSet()` / `worldSetForce()` | Cross-tile coordinate access |
+| `worldGet()` / `worldSet()` / `worldSetForce()` | Cross-tile coordinate access, with route color overrides where needed |
 | Majority-rule smoothing | Coherence passes after generation |
 
 ### Generate Modal Tabs
@@ -210,18 +290,45 @@ All generation is self-contained in the single file:
 | Weighted | `runGeneration()` weighted branch | Active layer (terrain only recommended) |
 | Perlin | `runGeneration()` perlin branch | Active layer (terrain only recommended) |
 | Water | `runWaterGen()` | Active layer (terrain) |
-| Roads & Paths | `runRoadsGen()` | Active structure layer (Underground or Structures) |
+| Roads & Paths | `runRoadsGen()` | Active layer (Terrain, Underground, or Structures) |
 | Presets | — | Saves/loads all tab state |
+
+### Route Style System
+
+Flowing water, roads, and paths use the shared route-style helpers:
+
+- `ROUTE_STYLE_DEFAULTS` provides built-in defaults for **River**, **Stream**, **Road**, and **Path**
+- `buildRouteStyleControls()` renders editable symbol/color controls in the Water and Roads tabs
+- `buildRouteTopology()` collects connected route directions for each path cell before painting
+- `routeSymbolFromDirs()` selects the symbol from those directions, covering horizontal, vertical, four corner orientations, junctions, and diagonals
+- `drawRoutePath()` writes the finished path with the route type color, so streams and rivers can reuse symbols while remaining visually distinct
+- `captureRouteStyles()` / `applyRouteStyleSnapshot()` persist styles in generation presets
+
+This keeps the route generator semantic: the pair type chooses the style, the path direction chooses the glyph, and color remains available as the route-type definer.
+
+### Water Generator
+
+`runWaterGen()` performs two passes:
+
+- **Bodies of Water** places lakes with Poisson-disk sampling, user-defined depth rings, and Perlin-wobbled organic edges
+- **Rivers & Streams** follows explicit source/destination route pairs with noise-guided meander and destination pull
+- River and stream pairs are stored in `riverPairs[]`
+- Direction-aware route symbols are applied after each route path is calculated
+- Route colors are stored in `cellColors` through `worldSetForce(wx, wy, ch, color)`
+- Shorter connected route pairs are recommended for natural meanders because each pair has its own destination pull; chaining pairs gives users more control over the path's broad course without forcing one long route
+- Older presets that only stored the former river/stream symbol fields are mapped into the new route-style controls on load
 
 ### Roads & Paths Generator
 
 `runRoadsGen()` reuses the same noise-guided pathfinding as rivers but:
-- **Writes to `layers[activeLayerIdx].maps`** directly — never touches the Terrain layer
+- **Writes to `layers[activeLayerIdx].maps`** directly, including Terrain when it is the active layer
 - Uses `refreshMapComposite()` after generation so all layers render correctly
-- Supports two route types: **Road** (horiz/vert symbols) and **Path** (diagonal/winding symbol)
-- Guarded: refuses to run if `activeLayerIdx === 0` (Terrain layer)
+- Supports two route types: **Road** and **Path**, each with editable symbols for horizontal, vertical, corner, junction, and diagonal segments
+- Writes route colors into `cellColors`, allowing roads and paths to reuse symbols while remaining visually distinct
 - Road/path pairs are stored in `roadPairs[]` (separate from `riverPairs[]`)
 - Pick mode (`roadPickPending`) uses the same transparent-modal + cell-click mechanism as river picks
+- Road/path route styles and route pairs are captured by generation presets
+- As with rivers, shorter connected road/path pairs give cleaner meanders than a single long source-to-destination route
 
 ---
 
@@ -253,6 +360,10 @@ Projects are saved as JSON. Two schema versions are supported:
     { "id": "underground", ... },
     { "id": "structures",  ... }
   ],
+  "generationState": {
+    "riverPairs": [ ... ],
+    "roadPairs": [ ... ]
+  },
   "genPresets": [ ... ]
 }
 ```
@@ -272,7 +383,9 @@ Projects are saved as JSON. Two schema versions are supported:
 }
 ```
 
-`applyProjectJSON()` detects `version: 1` and auto-migrates: the v1 data becomes the Terrain layer, and two empty structure layers (Underground, Structures) are created with their starter palettes.
+`generationState` stores the live route-pair lists used by the Generate modal. This is separate from `genPresets`: route pairs should survive modal close/reopen, generation, autosave, and page refresh even if the user never saves a named preset.
+
+`applyProjectJSON()` detects `version: 1` and auto-migrates: the v1 data becomes the Terrain layer, and two empty structure layers (Underground, Structures) are created with their starter palettes. After v1 or v2 load, `upgradeStarterPalettes()` merges missing built-in starter symbols into each layer.
 
 ---
 
@@ -284,7 +397,7 @@ All export options are centralized under the Save menu next to Open in the top t
 
 | Option | Scope | Format | Layer behavior |
 |---|---|---|---|
-| Save Project → JSON | Full project | `.json` | Saves every layer, map, palette, cell color override, grid setting, and preset |
+| Save Project → JSON | Full project | `.json` | Downloads every layer, map, palette, cell color override, grid setting, and preset, with export-time symbol metadata parsing |
 | Save Project → TXT | Full project | `.txt` | Groups maps by layer and suppresses empty layer maps |
 | Save Project → HTML | Full project | `.html` | Groups maps by layer, suppresses empty layer maps, and writes inline color styles |
 | Save Selected Map → JSON | Selected tile | `.json` | Uses the project JSON schema, scoped to the active layer and selected map |
@@ -293,14 +406,14 @@ All export options are centralized under the Save menu next to Open in the top t
 
 ### JSON Rules
 
-The full-project JSON export produced by `buildProjectJSON()` is the definitive schema.
+`buildProjectJSON()` is the lossless editor-state schema used by autosave and project restoration. Manual full-project downloads use `buildProjectExportJSON()`, which starts from `buildProjectJSON()` and transforms palette categories through `categoriesForJsonExport()` so symbols using biome metadata syntax export with `biomeData`.
 
 Selected-map JSON exports are intentionally schema-compatible with project JSON, but narrowed for single-map workflows:
 - `gridCols` and `gridRows` are preserved so importers know where the selected map belongs in the overall project grid.
 - `layers[]` contains only the active layer from the UI.
 - The exported layer's `maps[]` contains only the selected map.
 - `cellColors{}` is remapped from the original tile index to tile index `0` inside the single-map payload.
-- `categories[]` is filtered to only symbols actually used in the selected map. Blank space is never treated as a used symbol.
+- `categories[]` is filtered to only symbols actually used in the selected map and then passed through `categoriesForJsonExport()`. Blank space is never treated as a used symbol.
 
 ### TXT and HTML Rules
 
@@ -329,4 +442,5 @@ We have specifically scoped out tools for AI agents (GitHub Copilot via VS Code)
 | Version | File | Status | Key additions |
 |---|---|---|---|
 | v1.0 | Legacy desktop-only build | **Archived** — stable, no new features | Desktop-only, single layer |
-| v2.0 | `TERRASCII/index.html` | **Active** — unified desktop + mobile | UI mode switch, three layers, Roads & Paths generator, v2 project schema |
+| v2.0 | `TERRASCII/index.html` | Superseded by v3.0 | UI mode switch, three layers, Roads & Paths generator, v2 project schema |
+| v3.0 | `TERRASCII/index.html` | **Active** — unified desktop + mobile | Dominant Symbols panel, Brush Mix, biome metadata exports, ASCII reference modal, expanded palettes, route-style generation, persistent generation route pairs |

@@ -1,11 +1,11 @@
-# TERRASCII v2.0 — Unified Edition
+# TERRASCII v3.0 — Unified Edition
 
 > A self-contained ASCII tilemap editor for game designers, writers, and worldbuilders — works on desktop and mobile from a single file.
 
 **Canonical file:** `TERRASCII/index.html`
 This is the active, unified codebase for all TERRASCII development and supports both desktop and mobile interfaces from one HTML file.
 
-No build tools. No dependencies. No server. Download one HTML file, open it in any modern browser on any device, and start mapping.
+No build tools. No dependencies. No server. Free for anyone to use, share, and adapt under the project license. Download one HTML file, open it in any modern browser on any device, and start mapping.
 
 ---
 
@@ -17,7 +17,7 @@ It supports two interface modes in the same file:
 
 | Mode | Interface | Best for |
 |---|---|---|
-| 🖥 **Desktop** | Classic fixed sidebar + keyboard/mouse controls | Wide-screen browsers, power users |
+| 🖥 **Desktop** | Left tools column + center canvas + dominant right Symbols panel | Wide-screen browsers, power users |
 | 📱 **Mobile** | Bottom toolbar + swipe-up sheets + touch gestures | Phones, tablets, touch screens |
 
 Switch modes at any time using the **🖥 / 📱 toggle** in the header, or append `?ui=desktop` / `?ui=mobile` to the URL. Your preference is saved automatically.
@@ -35,6 +35,8 @@ Switch modes at any time using the **🖥 / 📱 toggle** in the header, or appe
 - **Per-cell color overrides** — individual cells can have colors independent of their palette defaults
 - **Undo / Redo** (Ctrl+Z / Ctrl+Y) — full snapshots before every major operation, 50-step stack
 - **Coordinate status bar** — shows tile, cell, and world coordinates on hover
+- **Canvas zoom controls** — Ctrl/⌘ + wheel to zoom; sidebar controls show the current percent and reset to 100%
+- **Desktop pan gesture** — hold Shift and drag with the mouse to pan the canvas
 
 ### Symbol Palette
 - **Symbol Palette Builder** — add, remove, reorder, and reset categories and symbols
@@ -44,6 +46,10 @@ Switch modes at any time using the **🖥 / 📱 toggle** in the header, or appe
 - **Per-symbol color overrides** alongside category-level defaults
 - **Color clipboard** — copy a hex color from one symbol and paste it to another, with its own status row
 - **Active symbol indicator** always visible
+- **Desktop Symbols panel** — the active layer palette is shown as a large right-side panel, separate from the left tool column
+- **Brush Mix** — select multiple symbols, assign weights, and paint/fill with weighted random variation per cell
+- **Symbol reference modal** — curated TERRASCII examples plus a complete printable ASCII/reference list, with copy and `.txt`/`.html` export actions
+- **Expanded starter palettes** — Terrain, Underground, and Structures ship with richer, layer-specific defaults; restored old projects receive missing starter symbols without overwriting custom palette entries
 
 ### Layers
 Three independent layers stack on top of each other — each has its own palette, map data, and cell color overrides:
@@ -61,6 +67,30 @@ Three independent layers stack on top of each other — each has its own palette
 - Rendering composites layers in this order: Underground → Terrain → Structures. Empty cells (space) in upper layers are transparent, so lower layers show through.
 - Layer data is saved with the project (v2 schema)
 
+### Biome / Narrative Metadata
+Symbol names can optionally encode engine-facing biome composition metadata:
+
+```text
+Mixed Pine & Hardwood | oak:30, pine:70
+Oak-Hickory | oak, hickory
+Forest Edge | grass:40, shrubs, saplings
+```
+
+When exported to JSON, TERRASCII keeps the display name and adds parsed `biomeData`:
+
+```json
+{
+  "char": "T",
+  "name": "Mixed Pine & Hardwood",
+  "biomeData": {
+    "oak": 30,
+    "pine": 70
+  }
+}
+```
+
+Explicit weights use `:` or `=`. Unweighted entries split the remaining weight evenly. The editable project/autosave state keeps the original palette string; downloadable JSON exports are enriched for downstream engines.
+
 ### Terrain Generation
 Open the **Generate** modal to fill tiles procedurally. Five tabs:
 
@@ -70,19 +100,23 @@ Open the **Generate** modal to fill tiles procedurally. Five tabs:
 
 **Water** — two ordered passes:
 1. **Bodies of Water** — Poisson-disk sampled lakes with user-defined depth rings (center → shore), Perlin-wobbled organic shapes
-2. **Rivers & Streams** — explicit source → destination pairs, noise-guided meander + destination pull. Click cells on the map to set points.
+2. **Rivers & Streams** — explicit source → destination pairs, noise-guided meander + destination pull. Click cells on the map to set points. Rivers and streams each have editable route styles for horizontal, vertical, corner, junction, and diagonal segments; symbols can be reused while color distinguishes river vs. stream output.
 
-**Roads & Paths** — generates roads and paths on the active structure layer (Underground or Structures). Uses the same noise-guided pathfinding as Rivers. Define source → destination pairs; roads use horizontal/vertical symbols, paths use a diagonal/winding symbol. The Terrain layer is never modified by this generator.
+**Roads & Paths** — generates roads and paths on the active layer: Terrain, Underground, or Structures. Uses the same noise-guided pathfinding as Rivers. Define source → destination pairs; roads and paths each have editable route styles for horizontal, vertical, corner, junction, and diagonal segments.
+
+For more natural meanders, prefer several shorter connected river/road routes over one very long route. Long routes are pulled strongly toward a distant destination; chained shorter segments usually produce cleaner bends while still forming a continuous path.
 
 ### Generation Presets
-- Save named presets capturing all three tabs
+- Save named presets capturing the generator tabs
+- Live river/stream and road/path route pairs are saved with the project/autosave state
+- Route styles for flowing water, roads, and paths are saved with presets
 - Presets travel with the project `.json`
 - Export/import presets as standalone `.json` files
 
 ### Export & Project Management
 | Action | Result |
 |---|---|
-| **Save Project → JSON** | Downloads a `.json` with full project state using the v2 layered schema |
+| **Save Project → JSON** | Downloads a layered `.json` using the current v2 project schema, with all maps/layers and export-time symbol metadata parsing |
 | **Save Project → TXT** | Downloads all non-empty maps as plain text, grouped by layer, with a symbol summary |
 | **Save Project → HTML** | Downloads all non-empty maps as standalone HTML with inline color spans, grouped by layer, with a symbol summary |
 | **Open Project** | Loads a previously saved `.json` |
@@ -94,7 +128,9 @@ Open the **Generate** modal to fill tiles procedurally. Five tabs:
 
 Project-wide text and HTML saves are separated by layer and suppress empty maps. Selected-map saves only include the currently selected map and active layer. JSON selected-map saves keep `gridCols` and `gridRows` so importing tools can place the tile back into the full project grid, and they include only the palette symbols actually used in that selected tile.
 
-**Autosave** runs automatically (debounced, 900 ms) via `localStorage`. Your work is restored the next time you open the file in the same browser.
+Manual project and selected-map JSON downloads include parsed `biomeData` for symbols using the `Display | species:weight` syntax. Autosave remains a lossless editor-state save and preserves the original editable symbol names.
+
+**Autosave** runs automatically via `localStorage`: ordinary edits are debounced, generation saves immediately, and pending changes are flushed before refresh/navigation. Your work is restored the next time you open the file in the same browser.
 
 ### Screenshot Mode
 Hides all UI chrome for clean screenshotting. Press **Escape** or click the exit button to return.
@@ -120,11 +156,15 @@ Hides all UI chrome for clean screenshotting. Press **Escape** or click the exit
 | `Ctrl + X` | Cut selection |
 | `Ctrl + V` | Open Paste modal |
 | `Ctrl + S` | Save project |
+| `Ctrl/⌘ + Mouse Wheel` | Zoom canvas |
+| `Shift + Left Drag` | Pan canvas |
 | `Escape` | Clear selection / Exit screenshot mode |
 
 ---
 
 ## Architecture
+
+See [FEATURES.md](./FEATURES.md) for a complete product-level feature inventory.
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for a full technical breakdown.
 
