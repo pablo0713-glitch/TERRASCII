@@ -6,3 +6,6 @@ desktop/
 
 # Node / tooling
 node_modules/
+
+# Public platform copy, generated from README content when needed
+PUBLIC_DESCRIPTION.md
