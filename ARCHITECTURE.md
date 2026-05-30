@@ -116,6 +116,22 @@ let cellColors = {};
 
 Clicking a row calls `setActiveLayer(idx)`, which calls `syncLayerRefs()`, resets the current symbol to the first in the new layer's palette, and rebuilds the palette panel.
 
+### Symbol Palette Builder
+
+The palette modal is the `Symbol Palette Builder`. It edits the palette for the currently active layer only.
+
+Toolbar layout:
+- Top row: `Load Palette`, `Save Palette` split button, `Reset to default`, and `Add Category`
+- Second row: `Color clipboard`, swatch/status, and `Clear`
+
+Import/export behavior:
+- Save formats: `.json`, `.txt`, `.html`
+- Load formats: `.json`, `.txt`, `.html`
+- Each export includes the active layer id/name and palette categories
+- `.txt` and `.html` exports embed a machine-readable payload so imports can round-trip cleanly
+- `Reset to default` restores the layer's built-in starter palette: Terrain uses `DEFAULT_CATEGORIES`, Underground uses `UNDERGROUND_STARTER`, and Structures uses `STRUCTURES_STARTER`
+- After import or reset, the palette panel, generator symbol lists, and toolbar symbol are refreshed immediately
+
 ---
 
 ## State Management
