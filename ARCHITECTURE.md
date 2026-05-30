@@ -103,7 +103,7 @@ let cellColors = {};
 
 ### Composite Rendering
 
-`refreshMapComposite(mi)` renders a tile by walking layers **bottom-up** (terrain → underground → structures) and displaying the topmost visible non-empty character for each cell. Empty cells (`' '`) in upper layers are transparent — the layer below shows through.
+`refreshMapComposite(mi)` renders a tile by walking layers in render order (underground → terrain → structures) and displaying the topmost visible non-empty character for each cell. Empty cells (`' '`) in upper layers are transparent, so lower layers show through.
 
 `refreshMap(mi)` (single-layer fast path) is still used for painting and generation on the active layer, since it only needs to show that layer's data.
 

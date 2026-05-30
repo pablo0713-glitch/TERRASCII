@@ -1304,6 +1304,9 @@ body.screenshot-mode { padding-bottom: 0 !important; }
   transition: background .1s;
   border: 1px solid transparent;
 }
+.layer-row.layer-hidden {
+  opacity: .7;
+}
 .layer-row:hover { background: var(--surface); }
 .layer-row.active-layer {
   background: #0e2018;
@@ -2179,8 +2182,8 @@ let CELL_PX = 22;
    Three fixed layers: terrain (base), underground (lower), structures (upper).
    Each layer has its own palette (categories), map data, and cell color overrides.
    The active layer determines which palette is shown and which map data is painted.
-   Rendering composites layers bottom-up: terrain → underground → structures.
-   Empty cells (' ') in upper layers are transparent — terrain shows through.
+   Rendering composites layers in this order: underground → terrain → structures.
+   Empty cells (' ') in upper layers are transparent, so lower layers show through.
 ════════════════════════════════════════════ */
 
 /** Default starter palette for the Underground layer (dungeons, caves). */
@@ -2252,13 +2255,14 @@ const STRUCTURES_STARTER = [
  * @param {string} id   - 'terrain' | 'underground' | 'structures'
  * @param {string} name - Display name (user-editable)
  * @param {Array}  cats - Initial categories array (may be empty)
+ * @param {boolean} visible - Whether the layer is shown by default
  */
-function makeLayer(id, name, cats) {
+function makeLayer(id, name, cats, visible = true) {
   const total = GRID_COLS * GRID_ROWS;
   return {
     id,
     name,
-    visible: true,
+    visible,
     categories: cats || [],
     maps: Array.from({length: total}, () =>
       Array.from({length: TILE_H}, () => Array(TILE_W).fill(' '))),
@@ -2305,6 +2309,22 @@ function syncLayerRefs() {
   categories = layer.categories;
   maps       = layer.maps;
   cellColors = layer.cellColors;
+}
+
+/**
+ * Keeps the active layer pointing at a visible layer when possible.
+ * Terrain is preferred so the UI starts in the expected default state.
+ */
+function normalizeActiveLayer() {
+  if (!layers.length) return;
+  const active = layers[activeLayerIdx];
+  if (active && active.visible) return;
+
+  const preferred = [0, 1, 2].find(idx => layers[idx]?.visible);
+  if (preferred !== undefined) {
+    activeLayerIdx = preferred;
+    syncLayerRefs();
+  }
 }
 
 // Active editor state
@@ -2503,13 +2523,15 @@ function applyProjectJSON(s) {
     // Ensure we always have exactly 3 layers (pad if a saved file is missing one)
     while (layers.length < 3) {
       const defaults = [
-        { id: 'terrain',     name: 'Terrain',     cats: deepClone(DEFAULT_CATEGORIES) },
-        { id: 'underground', name: 'Underground',  cats: deepClone(UNDERGROUND_STARTER) },
-        { id: 'structures',  name: 'Structures',   cats: deepClone(STRUCTURES_STARTER) },
+        { id: 'terrain',     name: 'Terrain',     cats: deepClone(DEFAULT_CATEGORIES),     visible: true },
+        { id: 'underground', name: 'Underground',  cats: deepClone(UNDERGROUND_STARTER),    visible: false },
+        { id: 'structures',  name: 'Structures',   cats: deepClone(STRUCTURES_STARTER),     visible: false },
       ];
-      layers.push(makeLayer(defaults[layers.length].id, defaults[layers.length].name, defaults[layers.length].cats));
+      const next = defaults[layers.length];
+      layers.push(makeLayer(next.id, next.name, next.cats, next.visible));
     }
     activeLayerIdx = clamp(s.activeLayerIdx || 0, 0, layers.length - 1);
+    normalizeActiveLayer();
     syncLayerRefs();
 
   } else {
@@ -2531,8 +2553,8 @@ function applyProjectJSON(s) {
         maps:       terrainMaps,
         cellColors: s.cellColors ? Object.assign({}, s.cellColors) : {},
       },
-      makeLayer('underground', 'Underground', deepClone(UNDERGROUND_STARTER)),
-      makeLayer('structures',  'Structures',  deepClone(STRUCTURES_STARTER)),
+      makeLayer('underground', 'Underground', deepClone(UNDERGROUND_STARTER), false),
+      makeLayer('structures',  'Structures',  deepClone(STRUCTURES_STARTER), false),
     ];
     activeLayerIdx = 0;
     syncLayerRefs();
@@ -2646,9 +2668,9 @@ function initMaps() {
  */
 function initLayers() {
   layers = [
-    makeLayer('terrain',     'Terrain',     deepClone(DEFAULT_CATEGORIES)),
-    makeLayer('underground', 'Underground', deepClone(UNDERGROUND_STARTER)),
-    makeLayer('structures',  'Structures',  deepClone(STRUCTURES_STARTER)),
+    makeLayer('terrain',     'Terrain',     deepClone(DEFAULT_CATEGORIES), true),
+    makeLayer('underground', 'Underground', deepClone(UNDERGROUND_STARTER), false),
+    makeLayer('structures',  'Structures',  deepClone(STRUCTURES_STARTER), false),
   ];
   activeLayerIdx = 0;
   syncLayerRefs();
@@ -3231,8 +3253,8 @@ function mapToText(mi) {
 
 /**
  * Returns the tile at index `mi` as a plain-text string composited across all visible layers.
- * Walks layers bottom-up (terrain → underground → structures) and uses the topmost
- * visible non-empty character for each cell — matching exactly what the user sees on screen.
+ * Walks layers in render order (underground → terrain → structures) and uses the
+ * topmost visible non-empty character for each cell — matching exactly what the user sees on screen.
  */
 function mapToTextComposite(mi) {
   const rows = [];
@@ -3250,7 +3272,7 @@ function mapToTextComposite(mi) {
 function getCompositeCell(mi, r, c) {
   let ch = ' ';
   let color = '';
-  for (const layer of layers) {
+  for (const layer of [layers[1], layers[0], layers[2]]) {
     if (!layer.visible) continue;
     const layerCh = layer.maps[mi]?.[r]?.[c] ?? ' ';
     if (layerCh === ' ') continue;
@@ -6395,13 +6417,21 @@ function buildLayerPanel() {
   title.textContent = 'Layers';
   section.appendChild(title);
 
+  const hint = document.createElement('div');
+  hint.className = 'note';
+  hint.style.margin = '0 0 6px';
+  hint.textContent = 'Terrain is on by default. Turn on Underground or Structures with the eye button.';
+  section.appendChild(hint);
+
   // Badge class map: terrain=green, underground=purple, structures=amber
   const badgeClass = { terrain: 'terrain', underground: 'lower', structures: 'upper' };
   const badgeLabel = { terrain: 'T', underground: 'U', structures: 'S' };
 
   layers.forEach((layer, idx) => {
     const row = document.createElement('div');
-    row.className = 'layer-row' + (idx === activeLayerIdx ? ' active-layer' : '');
+    row.className = 'layer-row' +
+      (idx === activeLayerIdx ? ' active-layer' : '') +
+      (!layer.visible ? ' layer-hidden' : '');
     row.title = `Click to edit ${layer.name} layer`;
 
     // Visibility toggle button (eye icon)
@@ -6412,6 +6442,7 @@ function buildLayerPanel() {
     visBtn.onclick = e => {
       e.stopPropagation();
       layer.visible = !layer.visible;
+      if (!layer.visible && idx === activeLayerIdx) normalizeActiveLayer();
       // Re-render all tiles to reflect visibility change
       const total = GRID_COLS * GRID_ROWS;
       for (let i = 0; i < total; i++) refreshMapComposite(i);
@@ -6474,7 +6505,7 @@ function setActiveLayer(idx) {
 }
 
 /**
- * Composite cell renderer — reads all visible layers bottom-up and
+ * Composite cell renderer — reads visible layers in render order and
  * displays the topmost non-empty character for each cell.
  * Called instead of refreshMap() when layer visibility changes.
  * For single-layer edits (painting, generation), refreshMap() is still used
@@ -6484,37 +6515,26 @@ function refreshMapComposite(mi) {
   document.querySelectorAll(`.cell[data-mi="${mi}"]`).forEach(cell => {
     const r = parseInt(cell.dataset.r), c = parseInt(cell.dataset.c);
 
-    // Walk layers bottom-up: terrain → underground → structures
-    // Use the topmost visible non-empty cell
-    let ch = ' ', color = '';
-    for (let li = 0; li < layers.length; li++) {
+    // Render order: underground → terrain → structures.
+    // Terrain supersedes underground, while structures remain the top layer.
+    let ch = ' ', color = '', winningLayer = null;
+    for (const li of [1, 0, 2]) {
       const layer = layers[li];
       if (!layer.visible) continue;
       const layerCh = layer.maps[mi]?.[r]?.[c] ?? ' ';
       if (layerCh !== ' ') {
         ch = layerCh;
+        winningLayer = layer;
         color = layer.cellColors[`${mi},${r},${c}`] || '';
-        // Don't break — upper layers can override lower ones
       }
     }
 
     cell.textContent = ch === ' ' ? '' : ch;
-    // For color: use the winning layer's override, then look up palette color
-    // from the layer that owns the winning character
     if (!color) {
-      // Find which layer owns this character and get its palette color
-      for (let li = layers.length - 1; li >= 0; li--) {
-        const layer = layers[li];
-        if (!layer.visible) continue;
-        const layerCh = layer.maps[mi]?.[r]?.[c] ?? ' ';
-        if (layerCh !== ' ' && layerCh === ch) {
-          // Look up color in this layer's palette
-          for (const cat of layer.categories) {
-            const sym = cat.symbols.find(s => s.char === ch);
-            if (sym) { color = sym.color || cat.color; break; }
-          }
-          break;
-        }
+      // Look up color from the layer that won the compositing pass.
+      for (const cat of (winningLayer?.categories || [])) {
+        const sym = cat.symbols.find(s => s.char === ch);
+        if (sym) { color = sym.color || cat.color; break; }
       }
     }
     cell.style.color = color || 'var(--text)';

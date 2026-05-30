@@ -54,7 +54,8 @@ Three independent layers stack on top of each other — each has its own palette
 - Click a layer row in the sidebar (desktop) to make it active — the palette and brush switch to that layer
 - The eye button (◉/○) toggles layer visibility
 - Layer names are editable inline
-- Rendering composites layers bottom-up: Terrain → Underground → Structures. Empty cells (space) in upper layers are transparent — the layer below shows through.
+- Fresh projects start with Terrain visible by default; Underground and Structures are hidden until you enable them
+- Rendering composites layers in this order: Underground → Terrain → Structures. Empty cells (space) in upper layers are transparent, so lower layers show through.
 - Layer data is saved with the project (v2 schema)
 
 ### Terrain Generation
