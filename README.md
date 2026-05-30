@@ -2,8 +2,8 @@
 
 > A self-contained ASCII tilemap editor for game designers, writers, and worldbuilders — works on desktop and mobile from a single file.
 
-**Canonical file:** `mobile/index.html`
-This is the active, unified codebase for all TERRASCII development. It replaces the separate `desktop/` version and supports both desktop and mobile interfaces from one HTML file.
+**Canonical file:** `TERRASCII/index.html`
+This is the active, unified codebase for all TERRASCII development and supports both desktop and mobile interfaces from one HTML file.
 
 No build tools. No dependencies. No server. Download one HTML file, open it in any modern browser on any device, and start mapping.
 
@@ -78,13 +78,17 @@ Open the **Generate** modal to fill tiles procedurally. Five tabs:
 ### Export & Project Management
 | Action | Result |
 |---|---|
-| **Save Project** | Downloads a `.json` with full project state |
+| **Save Project → JSON** | Downloads a `.json` with full project state using the v2 layered schema |
+| **Save Project → TXT** | Downloads all non-empty maps as plain text, grouped by layer, with a symbol summary |
+| **Save Project → HTML** | Downloads all non-empty maps as standalone HTML with inline color spans, grouped by layer, with a symbol summary |
 | **Open Project** | Loads a previously saved `.json` |
 | **New Project** | Resets to a fresh grid |
-| **Save Map** | Downloads the active tile as `.txt` |
-| **Export Maps** | Downloads every tile as individual `.txt` files |
+| **Save Selected Map → JSON** | Downloads the selected tile using the project JSON schema, scoped to the active layer |
+| **Save Selected Map → TXT** | Downloads the selected tile as plain text from the active layer only, with a symbol summary |
+| **Save Selected Map → HTML** | Downloads the selected tile as standalone HTML with inline color spans from the active layer only, with a symbol summary |
 | **Copy Map** | Copies the active tile text to the system clipboard |
-| **Legend** | Exports the symbol palette as a reference `.json` |
+
+Project-wide text and HTML saves are separated by layer and suppress empty maps. Selected-map saves only include the currently selected map and active layer. JSON selected-map saves keep `gridCols` and `gridRows` so importing tools can place the tile back into the full project grid, and they include only the palette symbols actually used in that selected tile.
 
 **Autosave** runs automatically (debounced, 900 ms) via `localStorage`. Your work is restored the next time you open the file in the same browser.
 
@@ -95,7 +99,7 @@ Hides all UI chrome for clean screenshotting. Press **Escape** or click the exit
 
 ## Getting Started
 
-1. Open `mobile/index.html` in any modern browser (Chrome, Firefox, Safari, Edge)
+1. Open `index.html` in any modern browser (Chrome, Firefox, Safari, Edge)
 2. On a wide screen it defaults to desktop mode (sidebar). On a phone/tablet it defaults to mobile mode (bottom toolbar).
 3. Use the **🖥 / 📱** toggle in the header to switch at any time.
 4. Start painting!
@@ -142,7 +146,7 @@ Running from a local `file://` path disables `localStorage` autosave in some bro
 
 ## Contributing
 
-Issues and pull requests are welcome. All work goes into `mobile/index.html` — the `desktop/` directory is archived as v1.0 and is no longer maintained.
+Issues and pull requests are welcome. All active work goes into `TERRASCII/index.html`.
 
 Please refer to [ARCHITECTURE.md](./ARCHITECTURE.md) and `.github/` for coding standards (vanilla JS, single-file constraint, ESLint).
 
@@ -150,7 +154,7 @@ Please refer to [ARCHITECTURE.md](./ARCHITECTURE.md) and `.github/` for coding s
 
 ## License
 
-MIT — see [desktop/LICENSE](../desktop/LICENSE) for details.
+MIT — see [LICENSE](./LICENSE) for details.
 
 ---
 

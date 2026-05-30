@@ -1,14 +1,14 @@
 # TERRASCII — Unified Architecture
 
-> **Canonical file:** `mobile/index.html`
+> **Canonical file:** `TERRASCII/index.html`
 > This is the single source of truth for all TERRASCII development going forward.
-> The `desktop/` directory is archived as v1.0 and is no longer actively maintained.
+> Legacy desktop-only builds are archived history and are no longer actively maintained.
 
 ---
 
 ## The "Single File" Principle
 
-TERRASCII is intentionally designed as a zero-dependency, serverless application. The entire software (UI, state management, generation logic, file I/O) is contained within a **single HTML file** (`mobile/index.html`).
+TERRASCII is intentionally designed as a zero-dependency, serverless application. The entire software (UI, state management, generation logic, file I/O) is contained within a **single HTML file** (`TERRASCII/index.html`).
 
 This is not a constraint born out of limitation, but a core product feature:
 - Endless portability.
@@ -24,7 +24,7 @@ This is not a constraint born out of limitation, but a core product feature:
 
 ## Interface Mode System (Desktop / Mobile)
 
-`mobile/index.html` is the **unified** file — it supports both the classic desktop sidebar interface and the mobile bottom-toolbar + bottom-sheets interface from a single codebase.
+`TERRASCII/index.html` is the **unified** file — it supports both the classic desktop sidebar interface and the mobile bottom-toolbar + bottom-sheets interface from a single codebase.
 
 ### Switching Modes
 
@@ -260,10 +260,49 @@ Projects are saved as JSON. Two schema versions are supported:
 
 ---
 
+## Save & Export System
+
+All export options are centralized under the Save menu next to Open in the top toolbar. The old post-paste Save button, Export Maps action, and standalone Legend export have been removed.
+
+### Save Options
+
+| Option | Scope | Format | Layer behavior |
+|---|---|---|---|
+| Save Project → JSON | Full project | `.json` | Saves every layer, map, palette, cell color override, grid setting, and preset |
+| Save Project → TXT | Full project | `.txt` | Groups maps by layer and suppresses empty layer maps |
+| Save Project → HTML | Full project | `.html` | Groups maps by layer, suppresses empty layer maps, and writes inline color styles |
+| Save Selected Map → JSON | Selected tile | `.json` | Uses the project JSON schema, scoped to the active layer and selected map |
+| Save Selected Map → TXT | Selected tile | `.txt` | Saves only the active layer's selected map |
+| Save Selected Map → HTML | Selected tile | `.html` | Saves only the active layer's selected map with inline color styles |
+
+### JSON Rules
+
+The full-project JSON export produced by `buildProjectJSON()` is the definitive schema.
+
+Selected-map JSON exports are intentionally schema-compatible with project JSON, but narrowed for single-map workflows:
+- `gridCols` and `gridRows` are preserved so importers know where the selected map belongs in the overall project grid.
+- `layers[]` contains only the active layer from the UI.
+- The exported layer's `maps[]` contains only the selected map.
+- `cellColors{}` is remapped from the original tile index to tile index `0` inside the single-map payload.
+- `categories[]` is filtered to only symbols actually used in the selected map. Blank space is never treated as a used symbol.
+
+### TXT and HTML Rules
+
+Text and HTML exports are layer-aware:
+- Project-wide exports are grouped by layer.
+- Project-wide exports suppress maps with no non-space symbols on that layer.
+- Selected-map exports use only the active layer selected in the UI.
+- Text exports write ASCII map data followed by a symbol summary.
+- HTML exports write ASCII map data with inline color spans and include the same symbol summary data.
+
+Symbol summaries are intentionally compact. They list each used symbol once with its display name, resolved color, and palette category. Project-wide summaries include all layers with used symbols; selected-map summaries include only the active layer.
+
+---
+
 ## AI Agent Integration
 
 We have specifically scoped out tools for AI agents (GitHub Copilot via VS Code) working on this project:
-- **`terrascii.agent.md`**: Dictates that the agent must prioritize `mobile/index.html` as the unified platform and focus on responsive vanilla JS.
+- **`terrascii.agent.md`**: Dictates that the agent must prioritize `TERRASCII/index.html` as the unified platform and focus on responsive vanilla JS.
 - **`terrascii.instructions.md`**: Enforces strict styling (single quotes, no inline CSS unless dynamic, descriptive comments, semantic HTML).
 - **Linting Hooks**: Local ESLint (`eslint-plugin-html`) runs automatically when the agent completes an edit, rejecting syntax errors within the HTML file's script tags.
 
@@ -273,5 +312,5 @@ We have specifically scoped out tools for AI agents (GitHub Copilot via VS Code)
 
 | Version | File | Status | Key additions |
 |---|---|---|---|
-| v1.0 | `desktop/index.html` | **Archived** — stable, no new features | Desktop-only, single layer |
-| v2.0 | `mobile/index.html` | **Active** — unified desktop + mobile | UI mode switch, three layers, Roads & Paths generator, v2 project schema |
+| v1.0 | Legacy desktop-only build | **Archived** — stable, no new features | Desktop-only, single layer |
+| v2.0 | `TERRASCII/index.html` | **Active** — unified desktop + mobile | UI mode switch, three layers, Roads & Paths generator, v2 project schema |

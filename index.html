@@ -49,11 +49,11 @@
   · Export presets as standalone .json; import and merge from file
 
   Export & Project
-  · Save / load projects as .json (version 1 schema)
+  · Save / load projects as .json (version 2 schema)
   · Autosave to localStorage (debounced 900 ms); restores on page load
-  · Export individual tile or all tiles as .txt files
+  · Export the project or selected tile as .txt or standalone .html files
   · Copy active tile text to system clipboard
-  · Export symbol palette as a legend .json (char, name, color per symbol)
+  · Export the selected tile as a standalone .json snapshot
 
   Screenshot Mode
   · Hides header, sidebar, grid lines, tile borders, and active-map
@@ -73,7 +73,7 @@
   · Pure HTML + CSS + vanilla JS — no frameworks, no modules, no build
   · Single self-contained file — open directly in any modern browser
   · All mutable state is module-level variables (see STATE section)
-  · Project schema: JSON v1 object (categories, maps, cellColors, presets)
+  · Project schema: JSON v2 object (layers, categories, maps, cellColors, presets)
   · Undo/redo: JSON snapshots of {maps, cellColors} on an array stack (50 max)
   · Brush painting: square radius applied to all cells within brushRadii[brushSize]
   · Flood fill: 4-connected or 8-connected (diagonal), switchable via fillConn
@@ -1373,7 +1373,18 @@ body.screenshot-mode { padding-bottom: 0 !important; }
   <div class="sep"></div>
   <button class="hbtn project" onclick="newProject()">⊕ New</button>
   <button class="hbtn project" onclick="openProject()">⊞ Open</button>
-  <button class="hbtn project" onclick="saveProject()">⊟ Save</button>
+  <div class="split-btn-wrap" style="display:inline-flex;align-self:center">
+    <button class="hbtn split-main" onclick="saveProject()" title="Save project as .json" style="border-radius:2px 0 0 2px;border-right:none">↓ Save</button>
+    <button class="hbtn split-caret" onclick="toggleSaveDropdown(this,'save-dropdown')" style="border-radius:0 2px 2px 0;padding:4px 7px;font-size:10px">▾</button>
+    <div class="split-dropdown" id="save-dropdown">
+      <button onclick="saveProject();closeSaveDropdowns()">A. Save project (.json)</button>
+      <button onclick="saveProjectTxt();closeSaveDropdowns()">B. Save project (.txt)</button>
+      <button onclick="saveProjectHtml();closeSaveDropdowns()">C. Save project (.html)</button>
+      <button onclick="saveSelectedMapJson();closeSaveDropdowns()">D. Save selected map (.json)</button>
+      <button onclick="downloadActiveMap();closeSaveDropdowns()">E. Save selected map (.txt)</button>
+      <button onclick="saveSelectedMapHtml();closeSaveDropdowns()">F. Save selected map (.html)</button>
+    </div>
+  </div>
   <input type="file" id="open-file-input" accept=".json" style="display:none" onchange="loadProjectFile(event)">
   <span id="project-name">unsaved project</span>
   <div class="sep"></div>
@@ -1383,16 +1394,6 @@ body.screenshot-mode { padding-bottom: 0 !important; }
   <div class="sep"></div>
   <button class="hbtn" onclick="copyActiveMap()" title="Copy active map text to clipboard">⎘ Copy Map</button>
   <button class="hbtn" onclick="pasteActiveMap()" title="Paste clipboard text into the active map">⧉ Paste Map</button>
-  <div class="split-btn-wrap" style="display:inline-flex;align-self:center">
-    <button class="hbtn split-main" onclick="saveProject()" title="Save project as .json" style="border-radius:2px 0 0 2px;border-right:none">↓ Save</button>
-    <button class="hbtn split-caret" onclick="toggleSaveDropdown(this)" style="border-radius:0 2px 2px 0;padding:4px 7px;font-size:10px">▾</button>
-    <div class="split-dropdown" id="save-dropdown">
-      <button onclick="saveProject();closeSaveDropdown()">⊟ Save project (.json)</button>
-      <button onclick="downloadActiveMap();closeSaveDropdown()">↓ Save active map (.txt)</button>
-      <button onclick="exportMaps();closeSaveDropdown()">↓ Export all maps (.txt)</button>
-      <button onclick="exportLegend();closeSaveDropdown()">↓ Export legend (.json)</button>
-    </div>
-  </div>
   <div class="sep"></div>
   <button class="hbtn" onclick="toggleScreenshot()" title="Hide UI for screenshotting — press Escape or click to exit">⊡ Screenshot</button>
   <div class="sep"></div>
@@ -2060,7 +2061,6 @@ body.screenshot-mode { padding-bottom: 0 !important; }
         <div class="tools-btn-group">
           <button class="tools-btn" onclick="newProject();closeSheet('sheet-tools')">⊕ New</button>
           <button class="tools-btn" onclick="openProject();closeSheet('sheet-tools')">⊞ Open</button>
-          <button class="tools-btn" onclick="saveProject();closeSheet('sheet-tools')">⊟ Save</button>
         </div>
       </div>
 
@@ -2080,9 +2080,18 @@ body.screenshot-mode { padding-bottom: 0 !important; }
         <div class="tools-btn-group">
           <button class="tools-btn" onclick="copyActiveMap();closeSheet('sheet-tools')">⎘ Copy</button>
           <button class="tools-btn" onclick="pasteActiveMap();closeSheet('sheet-tools')">⧉ Paste</button>
-          <button class="tools-btn" onclick="saveProject();closeSheet('sheet-tools')">⊟ JSON</button>
-          <button class="tools-btn" onclick="downloadActiveMap();closeSheet('sheet-tools')">↓ Map</button>
-          <button class="tools-btn" onclick="exportMaps();closeSheet('sheet-tools')">↓ All</button>
+          <div class="split-btn-wrap" style="display:inline-flex;align-self:center">
+            <button class="tools-btn split-main" onclick="saveProject();closeSheet('sheet-tools')" style="border-radius:2px 0 0 2px;border-right:none">↓ Save</button>
+            <button class="tools-btn split-caret" onclick="toggleSaveDropdown(this,'tools-save-dropdown')" style="border-radius:0 2px 2px 0;padding:4px 7px;font-size:10px">▾</button>
+            <div class="split-dropdown" id="tools-save-dropdown">
+              <button onclick="saveProject();closeSaveDropdowns();closeSheet('sheet-tools')">A. Save project (.json)</button>
+              <button onclick="saveProjectTxt();closeSaveDropdowns();closeSheet('sheet-tools')">B. Save project (.txt)</button>
+              <button onclick="saveProjectHtml();closeSaveDropdowns();closeSheet('sheet-tools')">C. Save project (.html)</button>
+              <button onclick="saveSelectedMapJson();closeSaveDropdowns();closeSheet('sheet-tools')">D. Save selected map (.json)</button>
+              <button onclick="downloadActiveMap();closeSaveDropdowns();closeSheet('sheet-tools')">E. Save selected map (.txt)</button>
+              <button onclick="saveSelectedMapHtml();closeSaveDropdowns();closeSheet('sheet-tools')">F. Save selected map (.html)</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -2617,14 +2626,6 @@ async function loadProjectFile(event) {
 }
 
 // ── Export Maps — download each tile as an individual .txt file (composited across all visible layers) ──
-function exportMaps() {
-  const total = GRID_COLS * GRID_ROWS;
-  for (let i = 0; i < total; i++) {
-    const r = Math.floor(i / GRID_COLS), c = i % GRID_COLS;
-    dlFile(`map_${c}_${r}.txt`, mapToTextComposite(i));
-  }
-  toast(`Downloaded ${total} map file${total > 1 ? 's' : ''}`);
-}
 
 /* ════════════════════════════════════════════
    INIT / BOOT
@@ -2751,8 +2752,8 @@ function buildGrid() {
 ════════════════════════════════════════════ */
 
 /** Returns the palette color for a character, checking symbol overrides first then category color. */
-function colorForChar(ch) {
-  for (const cat of categories) {
+function colorForChar(ch, cats = categories) {
+  for (const cat of cats) {
     const s = cat.symbols.find(s => s.char === ch);
     if (s) return s.color || cat.color;
   }
@@ -3238,36 +3239,616 @@ function mapToTextComposite(mi) {
   for (let r = 0; r < TILE_H; r++) {
     let row = '';
     for (let c = 0; c < TILE_W; c++) {
-      let ch = ' ';
-      for (let li = 0; li < layers.length; li++) {
-        const layer = layers[li];
-        if (!layer.visible) continue;
-        const layerCh = layer.maps[mi]?.[r]?.[c] ?? ' ';
-        if (layerCh !== ' ') ch = layerCh;
-      }
-      row += ch;
+      row += getCompositeCell(mi, r, c).ch;
     }
     rows.push(row);
   }
   return rows.join('\n');
 }
 
+/** Returns the visible character and color for one cell after compositing layers. */
+function getCompositeCell(mi, r, c) {
+  let ch = ' ';
+  let color = '';
+  for (const layer of layers) {
+    if (!layer.visible) continue;
+    const layerCh = layer.maps[mi]?.[r]?.[c] ?? ' ';
+    if (layerCh === ' ') continue;
+    ch = layerCh;
+    color = layer.cellColors[`${mi},${r},${c}`] || colorForChar(layerCh, layer.categories) || '';
+  }
+  return { ch, color };
+}
+
+/** Returns the character and color for one cell from a specific layer only. */
+function getLayerCell(layer, mi, r, c) {
+  const ch = layer.maps[mi]?.[r]?.[c] ?? ' ';
+  const color = ch === ' '
+    ? ''
+    : layer.cellColors[`${mi},${r},${c}`] || colorForChar(ch, layer.categories) || '';
+  return { ch, color };
+}
+
+/** Returns the active project name as a filesystem-safe slug. */
+function projectSlug() {
+  return projectName.replace(/[^a-z0-9_\-]/gi, '_') || 'project';
+}
+
+/** Returns true when a map is selected, otherwise shows a toast and aborts. */
+function requireActiveMap() {
+  if (activeMap < 0) {
+    toast('Select a map first');
+    return false;
+  }
+  return true;
+}
+
+/** Returns the tile row/column for a map index. */
+function mapCoords(mi) {
+  return {
+    col: mi % GRID_COLS,
+    row: Math.floor(mi / GRID_COLS),
+  };
+}
+
+/** Escapes a string for safe HTML injection. */
+function escapeHtml(text) {
+  return String(text)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+/** Renders one composite map as inline-color HTML. */
+function mapToHtmlComposite(mi) {
+  const rows = [];
+  for (let r = 0; r < TILE_H; r++) {
+    let row = '';
+    for (let c = 0; c < TILE_W; c++) {
+      const cell = getCompositeCell(mi, r, c);
+      const safe = cell.ch === ' ' ? ' ' : escapeHtml(cell.ch);
+      row += cell.color ? `<span style="color:${cell.color}">${safe}</span>` : safe;
+    }
+    rows.push(row);
+  }
+  return `<pre class="ascii-map">${rows.join('\n')}</pre>`;
+}
+
+/** Returns one map as plain text from the active layer only. */
+function mapToTextActiveLayer(mi) {
+  return mapToTextLayer(activeLayer(), mi);
+}
+
+/** Returns one map as plain text from a specific layer. */
+function mapToTextLayer(layer, mi) {
+  const rows = [];
+  for (let r = 0; r < TILE_H; r++) {
+    let row = '';
+    for (let c = 0; c < TILE_W; c++) {
+      row += getLayerCell(layer, mi, r, c).ch;
+    }
+    rows.push(row);
+  }
+  return rows.join('\n');
+}
+
+/** Renders one map as inline-color HTML from the active layer only. */
+function mapToHtmlActiveLayer(mi) {
+  return mapToHtmlLayer(activeLayer(), mi);
+}
+
+/** Renders one map as inline-color HTML from a specific layer. */
+function mapToHtmlLayer(layer, mi) {
+  const rows = [];
+  for (let r = 0; r < TILE_H; r++) {
+    let row = '';
+    for (let c = 0; c < TILE_W; c++) {
+      const cell = getLayerCell(layer, mi, r, c);
+      const safe = cell.ch === ' ' ? ' ' : escapeHtml(cell.ch);
+      row += cell.color ? `<span style="color:${cell.color}">${safe}</span>` : safe;
+    }
+    rows.push(row);
+  }
+  return `<pre class="ascii-map">${rows.join('\n')}</pre>`;
+}
+
+/** Returns only palette categories/symbols used by the selected tile. */
+function categoriesUsedByTile(categories, tileRows) {
+  const usedChars = new Set();
+  tileRows.forEach(row => {
+    Array.from(row).forEach(ch => {
+      if (ch !== ' ') usedChars.add(ch);
+    });
+  });
+  return categories
+    .map(cat => ({
+      ...cat,
+      symbols: cat.symbols.filter(sym => usedChars.has(sym.char)),
+    }))
+    .filter(cat => cat.symbols.length > 0);
+}
+
+/** Returns the non-empty characters used in one layer tile. */
+function usedCharsInLayerTile(layer, mi) {
+  const used = new Set();
+  (layer.maps[mi] || []).forEach(row => {
+    const text = Array.isArray(row) ? row.join('') : row;
+    Array.from(text).forEach(ch => {
+      if (ch !== ' ') used.add(ch);
+    });
+  });
+  return used;
+}
+
+/** Returns true when a layer tile contains at least one non-space symbol. */
+function layerTileHasData(layer, mi) {
+  return usedCharsInLayerTile(layer, mi).size > 0;
+}
+
+/** Formats a symbol summary for text exports. */
+function symbolSummaryLines(layerEntries) {
+  const lines = ['', '=== Symbol Summary ==='];
+  let hasSymbols = false;
+  layerEntries.forEach(({ layer, usedChars }) => {
+    const entries = [];
+    layer.categories.forEach(cat => {
+      cat.symbols.forEach(sym => {
+        if (!usedChars.has(sym.char)) return;
+        entries.push({
+          char: sym.char,
+          name: sym.name,
+          color: sym.color || cat.color || '',
+          category: cat.name,
+        });
+      });
+    });
+    if (!entries.length) return;
+    hasSymbols = true;
+    lines.push('', `[${layer.name}]`);
+    entries.forEach(entry => {
+      lines.push(`${entry.char} = ${entry.name} | ${entry.color || 'no color'} | ${entry.category}`);
+    });
+  });
+  if (!hasSymbols) lines.push('No non-empty symbols used.');
+  return lines;
+}
+
+/** Returns symbol summary objects for a set of layer/character entries. */
+function symbolSummaryEntries(layerEntries) {
+  return layerEntries.map(({ layer, usedChars }) => ({
+    layer,
+    entries: layer.categories.flatMap(cat =>
+      cat.symbols
+        .filter(sym => usedChars.has(sym.char))
+        .map(sym => ({
+          char: sym.char,
+          name: sym.name,
+          color: sym.color || cat.color || '',
+          category: cat.name,
+        }))
+    ),
+  })).filter(group => group.entries.length > 0);
+}
+
+/** Formats a symbol summary for the full project text export. */
+function projectSymbolSummaryEntries() {
+  const total = GRID_COLS * GRID_ROWS;
+  return layers.map(layer => {
+    const usedChars = new Set();
+    for (let mi = 0; mi < total; mi++) {
+      usedCharsInLayerTile(layer, mi).forEach(ch => usedChars.add(ch));
+    }
+    return { layer, usedChars };
+  });
+}
+
+/** Formats a symbol summary for the full project text export. */
+function projectSymbolSummaryLines() {
+  return symbolSummaryLines(projectSymbolSummaryEntries());
+}
+
+/** Formats a symbol summary for the selected active-layer text export. */
+function selectedMapSymbolSummaryLines(mi) {
+  const layer = activeLayer();
+  return symbolSummaryLines([{ layer, usedChars: usedCharsInLayerTile(layer, mi) }]);
+}
+
+/** Formats a symbol summary for the selected active-layer HTML export. */
+function selectedMapSymbolSummaryHtml(mi) {
+  const layer = activeLayer();
+  return symbolSummaryHtml([{ layer, usedChars: usedCharsInLayerTile(layer, mi) }]);
+}
+
+/** Renders symbol summary data for HTML exports. */
+function symbolSummaryHtml(layerEntries) {
+  const groups = symbolSummaryEntries(layerEntries);
+  if (!groups.length) return '<section class="summary"><h2>Symbol Summary</h2><p class="empty-summary">No non-empty symbols used.</p></section>';
+  const content = groups.map(group => `
+    <section class="summary-layer">
+      <h3>${escapeHtml(group.layer.name)}</h3>
+      <div class="summary-grid">
+        ${group.entries.map(entry => `
+          <div class="summary-row">
+            <span class="summary-symbol" style="color:${entry.color || '#e8eaf2'}">${escapeHtml(entry.char)}</span>
+            <span>${escapeHtml(entry.name)}</span>
+            <span>${escapeHtml(entry.color || 'no color')}</span>
+            <span>${escapeHtml(entry.category)}</span>
+          </div>`).join('\n')}
+      </div>
+    </section>`).join('\n');
+  return `<section class="summary"><h2>Symbol Summary</h2>${content}</section>`;
+}
+
+/** Builds the selected-map JSON payload from the project schema, scoped to one tile and one layer. */
+function buildSelectedMapJSON() {
+  const project = deepClone(buildProjectJSON());
+  const mi = activeMap;
+  const layer = deepClone(project.layers[activeLayerIdx]);
+
+  project.activeLayerIdx = 0;
+
+  layer.maps = [deepClone(layer.maps[mi])];
+  layer.categories = categoriesUsedByTile(layer.categories, layer.maps[0]);
+  const selectedColors = {};
+  const prefix = `${mi},`;
+  if (layer.cellColors) {
+    Object.entries(layer.cellColors).forEach(([key, color]) => {
+      if (key.startsWith(prefix)) selectedColors[key.replace(prefix, '0,')] = color;
+    });
+  }
+  layer.cellColors = selectedColors;
+  project.layers = [layer];
+  return project;
+}
+
+/** Builds a plain-text export for the entire project, separated by layer. */
+function buildProjectTextExport() {
+  const total = GRID_COLS * GRID_ROWS;
+  const lines = [
+    'TERRASCII PROJECT EXPORT',
+    `Project: ${projectName}`,
+    `Exported: ${new Date().toISOString()}`,
+    `Grid: ${GRID_COLS}x${GRID_ROWS} tiles`,
+    `Tile size: ${TILE_W}x${TILE_H} cells`,
+  ];
+  let hasMaps = false;
+  layers.forEach(layer => {
+    const layerLines = [];
+    for (let mi = 0; mi < total; mi++) {
+      if (!layerTileHasData(layer, mi)) continue;
+      const { col, row } = mapCoords(mi);
+      layerLines.push('', `=== Map [${col},${row}] ===`, mapToTextLayer(layer, mi));
+    }
+    if (!layerLines.length) return;
+    hasMaps = true;
+    lines.push('', `### Layer: ${layer.name} ###`, ...layerLines);
+  });
+  if (!hasMaps) lines.push('', 'No non-empty maps found.');
+  lines.push(...projectSymbolSummaryLines());
+  return lines.join('\n');
+}
+
+/** Builds a plain-text export for the active map from the active layer only. */
+function buildSelectedMapTextExport(mi) {
+  const { col, row } = mapCoords(mi);
+  const lines = [
+    'TERRASCII SELECTED MAP EXPORT',
+    `Project: ${projectName}`,
+    `Exported: ${new Date().toISOString()}`,
+    `Map: [${col},${row}]`,
+    `Layer: ${activeLayer().name}`,
+    `Tile size: ${TILE_W}x${TILE_H} cells`,
+    '',
+    `=== Map [${col},${row}] ===`,
+    mapToTextActiveLayer(mi),
+  ];
+  lines.push(...selectedMapSymbolSummaryLines(mi));
+  return lines.join('\n');
+}
+
+/** Builds a standalone HTML document for the entire project. */
+function buildProjectHtmlExport() {
+  const total = GRID_COLS * GRID_ROWS;
+  const layerSections = layers.map(layer => {
+    const tiles = [];
+    for (let mi = 0; mi < total; mi++) {
+      if (!layerTileHasData(layer, mi)) continue;
+      const { col, row } = mapCoords(mi);
+      tiles.push(`
+        <section class="tile">
+          <h3>Map [${col},${row}]</h3>
+          ${mapToHtmlLayer(layer, mi)}
+        </section>`);
+    }
+    if (!tiles.length) return '';
+    return `
+      <section class="layer-section">
+        <h2>${escapeHtml(layer.name)}</h2>
+        <div class="project-grid">
+          ${tiles.join('\n')}
+        </div>
+      </section>`;
+  }).filter(Boolean);
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${escapeHtml(projectName)}</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0;
+    padding: 24px;
+    background: #0c0e13;
+    color: #e8eaf2;
+    font-family: "JetBrains Mono", monospace;
+  }
+  h1, h2 {
+    margin: 0;
+    font-family: "Rajdhani", sans-serif;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+  h1 { color: #5bf5c8; font-size: 28px; margin-bottom: 16px; }
+  .meta { color: #b0b8d8; font-size: 12px; line-height: 1.5; margin-bottom: 18px; }
+  .layer-section {
+    margin-top: 28px;
+  }
+  .layer-section > h2,
+  .summary > h2 {
+    color: #5bf5c8;
+    font-size: 20px;
+    margin-bottom: 12px;
+  }
+  .project-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 18px;
+    align-items: start;
+  }
+  .tile {
+    background: #13161e;
+    border: 1px solid #2a2f3f;
+    border-radius: 8px;
+    padding: 14px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.28);
+  }
+  .tile h3 {
+    margin: 0;
+    font-family: "Rajdhani", sans-serif;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    font-size: 15px;
+    color: #ffcc44;
+    margin-bottom: 10px;
+  }
+  .ascii-map {
+    margin: 0;
+    white-space: pre;
+    line-height: 1.1;
+    font-size: 14px;
+    tab-size: 2;
+  }
+  .summary {
+    margin-top: 32px;
+    border-top: 1px solid #2a2f3f;
+    padding-top: 20px;
+  }
+  .summary-layer {
+    margin-top: 16px;
+  }
+  .summary-layer h3 {
+    margin: 0 0 8px;
+    color: #ffcc44;
+    font-family: "Rajdhani", sans-serif;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    font-size: 15px;
+  }
+  .summary-grid {
+    display: grid;
+    gap: 6px;
+  }
+  .summary-row {
+    display: grid;
+    grid-template-columns: 36px minmax(140px, 1fr) minmax(90px, auto) minmax(100px, auto);
+    gap: 12px;
+    align-items: center;
+    padding: 6px 8px;
+    background: #13161e;
+    border: 1px solid #2a2f3f;
+    border-radius: 4px;
+    color: #b0b8d8;
+    font-size: 12px;
+  }
+  .summary-symbol {
+    font-weight: 700;
+    font-size: 16px;
+  }
+  .empty-summary {
+    color: #b0b8d8;
+    font-size: 12px;
+  }
+</style>
+</head>
+<body>
+  <h1>${escapeHtml(projectName)}</h1>
+  <div class="meta">Exported ${escapeHtml(new Date().toLocaleString())} | ${GRID_COLS}x${GRID_ROWS} tiles | ${TILE_W}x${TILE_H} cells</div>
+  <main>
+    ${layerSections.join('\n')}
+    ${symbolSummaryHtml(projectSymbolSummaryEntries())}
+  </main>
+</body>
+</html>`;
+}
+
+/** Builds a standalone HTML document for the active tile. */
+function buildSelectedMapHtmlExport() {
+  const { col, row } = mapCoords(activeMap);
+  const layer = activeLayer();
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${escapeHtml(projectName)} - Map [${col},${row}]</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0;
+    padding: 24px;
+    background: #0c0e13;
+    color: #e8eaf2;
+    font-family: "JetBrains Mono", monospace;
+  }
+  h1 {
+    margin: 0 0 12px;
+    font-family: "Rajdhani", sans-serif;
+    font-size: 26px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #5bf5c8;
+  }
+  .meta {
+    margin-bottom: 16px;
+    color: #b0b8d8;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .frame {
+    display: inline-block;
+    background: #13161e;
+    border: 1px solid #2a2f3f;
+    border-radius: 8px;
+    padding: 14px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.28);
+  }
+  .ascii-map {
+    margin: 0;
+    white-space: pre;
+    line-height: 1.1;
+    font-size: 14px;
+    tab-size: 2;
+  }
+  .summary {
+    margin-top: 24px;
+    border-top: 1px solid #2a2f3f;
+    padding-top: 18px;
+  }
+  .summary h2 {
+    margin: 0 0 12px;
+    font-family: "Rajdhani", sans-serif;
+    font-size: 20px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #5bf5c8;
+  }
+  .summary-layer {
+    margin-top: 16px;
+  }
+  .summary-layer h3 {
+    margin: 0 0 8px;
+    color: #ffcc44;
+    font-family: "Rajdhani", sans-serif;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    font-size: 15px;
+  }
+  .summary-grid {
+    display: grid;
+    gap: 6px;
+  }
+  .summary-row {
+    display: grid;
+    grid-template-columns: 36px minmax(140px, 1fr) minmax(90px, auto) minmax(100px, auto);
+    gap: 12px;
+    align-items: center;
+    padding: 6px 8px;
+    background: #13161e;
+    border: 1px solid #2a2f3f;
+    border-radius: 4px;
+    color: #b0b8d8;
+    font-size: 12px;
+  }
+  .summary-symbol {
+    font-weight: 700;
+    font-size: 16px;
+  }
+  .empty-summary {
+    color: #b0b8d8;
+    font-size: 12px;
+  }
+</style>
+</head>
+<body>
+  <h1>${escapeHtml(projectName)} - Map [${col},${row}]</h1>
+  <div class="meta">Exported ${escapeHtml(new Date().toLocaleString())} | selected tile ${activeMap} | layer ${escapeHtml(layer.name)}</div>
+  <div class="frame">${mapToHtmlActiveLayer(activeMap)}</div>
+  ${selectedMapSymbolSummaryHtml(activeMap)}
+</body>
+</html>`;
+}
+
+/** Saves the full project as .txt. */
+function saveProjectTxt() {
+  const slug = projectSlug();
+  dlFile(`${slug}.txt`, buildProjectTextExport());
+  toast(`Saved ${slug}.txt`);
+}
+
+/** Saves the full project as .html with inline CSS color spans. */
+function saveProjectHtml() {
+  const slug = projectSlug();
+  dlFile(`${slug}.html`, buildProjectHtmlExport(), 'text/html;charset=utf-8');
+  toast(`Saved ${slug}.html`);
+}
+
+/** Saves the active tile as .json. */
+function saveSelectedMapJson() {
+  if (!requireActiveMap()) return;
+  const { col, row } = mapCoords(activeMap);
+  const fname = `map_${col}_${row}.json`;
+  dlFile(fname, JSON.stringify(buildSelectedMapJSON(), null, 2));
+  toast(`Saved ${fname}`);
+}
+
+/** Saves the active tile as .html with inline CSS color spans. */
+function saveSelectedMapHtml() {
+  if (!requireActiveMap()) return;
+  const { col, row } = mapCoords(activeMap);
+  const fname = `map_${col}_${row}.html`;
+  dlFile(fname, buildSelectedMapHtmlExport(), 'text/html;charset=utf-8');
+  toast(`Saved ${fname}`);
+}
+
 /**
  * Toggles the Save split-button dropdown open/closed.
  * Closes automatically when the user clicks anywhere outside it.
  */
-function toggleSaveDropdown(btn) {
-  const dd = document.getElementById('save-dropdown');
-  dd.classList.toggle('open');
-  if (dd.classList.contains('open')) {
-    setTimeout(() => document.addEventListener('click', closeSaveDropdown, { once: true }), 0);
+function toggleSaveDropdown(btn, dropdownId = 'save-dropdown') {
+  const dd = document.getElementById(dropdownId);
+  if (!dd) return;
+  const shouldOpen = !dd.classList.contains('open');
+  closeSaveDropdowns();
+  if (shouldOpen) {
+    dd.classList.add('open');
+    setTimeout(() => document.addEventListener('click', closeSaveDropdowns, { once: true }), 0);
   }
 }
 
 /** Closes the Save dropdown. */
 function closeSaveDropdown() {
-  const dd = document.getElementById('save-dropdown');
-  if (dd) dd.classList.remove('open');
+  closeSaveDropdowns();
+}
+
+/** Closes any open Save dropdowns. */
+function closeSaveDropdowns() {
+  document.querySelectorAll('.split-dropdown').forEach(dd => {
+    if (dd.id === 'save-dropdown' || dd.id === 'tools-save-dropdown') dd.classList.remove('open');
+  });
 }
 
 /**
@@ -3334,47 +3915,12 @@ async function pasteActiveMap() {
   toast(`Pasted into map[${activeMap % GRID_COLS},${Math.floor(activeMap / GRID_COLS)}]`);
 }
 
-/** Downloads the active tile as a .txt file (composited across all visible layers). */
+/** Downloads the active tile as a .txt file from the active layer only. */
 function downloadActiveMap() {
+  if (!requireActiveMap()) return;
   const r = Math.floor(activeMap / GRID_COLS), c = activeMap % GRID_COLS;
-  dlFile(`map_${c}_${r}.txt`, mapToTextComposite(activeMap));
+  dlFile(`map_${c}_${r}.txt`, buildSelectedMapTextExport(activeMap));
   toast(`Saved map_${c}_${r}.txt`);
-}
-
-/** Downloads all tiles as individual .txt files (composited across all visible layers). */
-function downloadAllMaps() {
-  const total = GRID_COLS * GRID_ROWS;
-  for (let i = 0; i < total; i++) {
-    const r = Math.floor(i / GRID_COLS), c = i % GRID_COLS;
-    dlFile(`map_${c}_${r}.txt`, mapToTextComposite(i));
-  }
-  toast(`Saved ${total} map file${total > 1 ? 's' : ''}`);
-}
-
-/**
- * Exports the current palette as a legend .json file.
- * The legend contains every category and symbol with its character,
- * display name, and color — useful for reference alongside exported maps.
- * Format:
- *   { project, exportedAt, categories: [ { name, color, symbols: [ { char, name, color } ] } ] }
- */
-function exportLegend() {
-  const legend = {
-    project:    projectName,
-    exportedAt: new Date().toISOString(),
-    categories: categories.map(cat => ({
-      name:    cat.name,
-      color:   cat.color,
-      symbols: cat.symbols.map(sym => ({
-        char:  sym.char,
-        name:  sym.name,
-        color: sym.color || cat.color,
-      })),
-    })),
-  };
-  const slug = projectName.replace(/[^a-z0-9_\-]/gi, '_') || 'project';
-  dlFile(`${slug}_legend.json`, JSON.stringify(legend, null, 2));
-  toast(`Saved ${slug}_legend.json`);
 }
 
 /** Clears the active tile to empty space, removing all cell color overrides. */
@@ -3938,11 +4484,15 @@ function toggleScreenshot() {
    UTILITIES
 ════════════════════════════════════════════ */
 
-/** Creates and triggers a download of a text file. */
-function dlFile(name, text) {
+/** Creates and triggers a download of plain text or HTML content. */
+function dlFile(name, text, mime = 'text/plain;charset=utf-8') {
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(text);
-  a.download = name; a.click();
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function openModal(id)  { document.getElementById(id).classList.add('open'); }
