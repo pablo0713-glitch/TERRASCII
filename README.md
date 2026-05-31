@@ -113,7 +113,23 @@ TERRASCII is meant to be portable, readable, playful, and practical. It keeps th
 
 It is small enough to keep close, flexible enough to fit many projects, and open enough for others to use in whatever way helps them make worlds.
 
+## Basic Setup
+
+TERRASCII is distributed as a browser-based tool. To use it, download the project and open `index.html` in a modern web browser.
+
+For the best experience:
+
+- Keep `index.html` and the project files together in the same folder
+- Use Save Project to download a project file when you want a portable backup
+- Use Open Project to return to a previously saved project file
+- If browser autosave does not restore your previous session, run TERRASCII from a local web server instead of opening it directly from the file system
+
+## Browser Compatibility
+
+TERRASCII is intended for modern desktop and mobile browsers, including recent versions of Chrome, Firefox, Safari, and Edge.
+
+Some browsers limit local storage when a page is opened directly from a local file. If autosave is unavailable or inconsistent, serving the folder through localhost usually restores normal browser storage behavior.
+
 ## License
 
 MIT — see LICENSE for details.
-
